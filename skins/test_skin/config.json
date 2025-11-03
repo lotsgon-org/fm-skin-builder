@@ -1,4 +1,7 @@
 {
     "schema_version": 2,
-    "name": "Test Skin (Sample)"
+    "name": "Test Skin (Sample)",
+    "includes": [
+        "assets/backgrounds"
+    ]
 }

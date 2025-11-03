@@ -980,7 +980,16 @@ def run_patch(css_dir: Path, out_dir: Path, bundle: Optional[Path] = None, patch
             should_swap = any(x.strip().lower() in {
                               "assets/icons", "assets/backgrounds"} for x in includes)
         if should_swap:
-            swap_textures(css_dir, b, out_dir, dry_run=dry_run)
+            try:
+                swap_textures(
+                    bundle_path=b,
+                    skin_dir=css_dir,
+                    includes=list(includes) if isinstance(includes, list) else [],
+                    out_dir=out_dir,
+                    dry_run=dry_run,
+                )
+            except Exception as e:
+                log.warning(f"[WARN] Texture swap skipped due to error: {e}")
 
 
 # -----------------------------
