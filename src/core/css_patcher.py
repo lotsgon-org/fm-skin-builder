@@ -314,7 +314,8 @@ class CssPatcher:
                 log.info("  Selector overrides affecting multiple assets:")
                 for (sel, prop), n in multi_asset_touches:
                     log.info(f"    {sel} / {prop}: {n} assets")
-            log.info("[DRY-RUN] No files were written. Use without --dry-run to apply changes.")
+            log.info(
+                "[DRY-RUN] No files were written. Use without --dry-run to apply changes.")
             return
 
         out_dir.mkdir(parents=True, exist_ok=True)
@@ -462,12 +463,14 @@ class CssPatcher:
                     sel_variants = [selector_text, selector_text.lstrip(".")]
                     if self.selector_props_filter is not None:
                         # Require a (selector, prop) match in hints
-                        allowed = any((sv, prop_name) in self.selector_props_filter for sv in sel_variants)
+                        allowed = any(
+                            (sv, prop_name) in self.selector_props_filter for sv in sel_variants)
                         if not allowed:
                             continue
                     elif self.selectors_filter is not None:
                         # Require selector to be in allowed set
-                        allowed = any(sv in self.selectors_filter for sv in sel_variants)
+                        allowed = any(
+                            sv in self.selectors_filter for sv in sel_variants)
                         if not allowed:
                             continue
 
@@ -635,10 +638,12 @@ class CssPatcher:
                                             )
                                         # Record touch for conflict surfacing (normalize key to tuple)
                                         try:
-                                            touches = getattr(self, "_selector_touches", None)
+                                            touches = getattr(
+                                                self, "_selector_touches", None)
                                             if touches is not None:
                                                 norm_sel = key[0]
-                                                touches.setdefault((norm_sel if norm_sel.startswith('.') else norm_sel, prop_name), set()).add(name)
+                                                touches.setdefault((norm_sel if norm_sel.startswith(
+                                                    '.') else norm_sel, prop_name), set()).add(name)
                                         except Exception:
                                             pass
                             if not found_type4:
@@ -834,7 +839,8 @@ def load_targeting_hints(css_dir: Path) -> Tuple[Optional[Set[str]], Optional[Se
             # asset: name[, name]
             m_asset = re.match(r"^asset\s*[:=]\s*(.+)$", line, re.IGNORECASE)
             if m_asset:
-                names = [x.strip() for x in re.split(r",|;", m_asset.group(1)) if x.strip()]
+                names = [x.strip() for x in re.split(
+                    r",|;", m_asset.group(1)) if x.strip()]
                 assets.update(names)
                 continue
             # selector: .sel [prop]
@@ -883,7 +889,8 @@ def run_patch(css_dir: Path, out_dir: Path, bundle: Optional[Path] = None, patch
     """
     css_vars, selector_overrides = collect_css_from_dir(css_dir)
     # Optional targeting hints
-    hints_assets, hints_selectors, hints_selector_props = load_targeting_hints(css_dir)
+    hints_assets, hints_selectors, hints_selector_props = load_targeting_hints(
+        css_dir)
     debug_dir = (out_dir / "debug_uss") if debug_export else None
     patcher = CssPatcher(
         css_vars,
@@ -911,14 +918,15 @@ def run_patch(css_dir: Path, out_dir: Path, bundle: Optional[Path] = None, patch
 
     # Build candidate asset filters from cached scan index if available
     skin_is_known = (css_dir / "config.json").exists()
-    cache_candidates: Dict[Path, Optional[Set[str]]]= {}
+    cache_candidates: Dict[Path, Optional[Set[str]]] = {}
     if use_scan_cache and skin_is_known:
         # if refresh flag, generate fresh cache
         try:
             cdir = cache_dir(root=css_dir.parent.parent) / css_dir.name
             cdir.mkdir(parents=True, exist_ok=True)
             for b in bundle_files:
-                cand = _load_or_refresh_scan_cache(cdir, css_dir, b, refresh=refresh_scan_cache, css_vars=css_vars, selector_overrides=selector_overrides, patch_direct=patch_direct)
+                cand = _load_or_refresh_scan_cache(cdir, css_dir, b, refresh=refresh_scan_cache,
+                                                   css_vars=css_vars, selector_overrides=selector_overrides, patch_direct=patch_direct)
                 cache_candidates[b] = cand
         except Exception as e:
             log.debug(f"Scan cache unavailable: {e}")
@@ -941,7 +949,8 @@ def run_patch(css_dir: Path, out_dir: Path, bundle: Optional[Path] = None, patch
             else:
                 cand = set(cand) & set(hints_assets)
         if cand is not None and len(cand) == 0:
-            log.info(f"Hint filter excluded all assets for {b.name}; skipping bundle.")
+            log.info(
+                f"Hint filter excluded all assets for {b.name}; skipping bundle.")
             continue
         patcher.patch_bundle_file(b, out_dir, candidate_assets=cand)
 
@@ -997,8 +1006,10 @@ def _load_index(cache_skin_dir: Path, bundle: Path) -> Optional[Dict[str, Any]]:
 def _save_index(cache_skin_dir: Path, bundle: Path, index: Dict[str, Any]) -> Path:
     p = _cache_index_path(cache_skin_dir, bundle)
     idx = dict(index)  # shallow copy
-    idx["_meta"] = {"version": SCAN_INDEX_VERSION, "fingerprint": _bundle_fingerprint(bundle)}
-    p.write_text(json.dumps(idx, ensure_ascii=False, indent=2), encoding="utf-8")
+    idx["_meta"] = {"version": SCAN_INDEX_VERSION,
+                    "fingerprint": _bundle_fingerprint(bundle)}
+    p.write_text(json.dumps(idx, ensure_ascii=False,
+                 indent=2), encoding="utf-8")
     return p
 
 

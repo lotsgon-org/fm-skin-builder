@@ -70,7 +70,8 @@ def make_env_two_assets():
     strings = ["--primary"]
     colors_A = [FakeColor(0.0, 0.0, 0.0, 1.0)]
     colors_B = [FakeColor(0.0, 0.0, 0.0, 1.0)]
-    rules = [FakeRule([FakeProperty("color", [FakeValue(3, 0), FakeValue(4, 0)])])]
+    rules = [
+        FakeRule([FakeProperty("color", [FakeValue(3, 0), FakeValue(4, 0)])])]
     dataA = FakeData("StyleA", strings, colors_A, rules)
     dataB = FakeData("StyleB", strings, colors_B, rules)
     return FakeEnv([FakeObj(dataA), FakeObj(dataB)]), dataA, dataB
@@ -92,7 +93,8 @@ def test_scan_cache_prefilters_assets(tmp_path: Path, monkeypatch):
         }),
         encoding="utf-8",
     )
-    (skin / "colours" / "base.uss").write_text(":root{--primary:#112233;}\n", encoding="utf-8")
+    (skin / "colours" /
+     "base.uss").write_text(":root{--primary:#112233;}\n", encoding="utf-8")
 
     # Fake UnityPy env with two assets that would both qualify normally
     from src.core import css_patcher as cp
@@ -112,7 +114,8 @@ def test_scan_cache_prefilters_assets(tmp_path: Path, monkeypatch):
             {"name": "StyleB"},
         ],
     }
-    monkeypatch.setattr(cp, "_refresh_index", lambda cache_skin_dir, bundle: fake_index)
+    monkeypatch.setattr(cp, "_refresh_index",
+                        lambda cache_skin_dir, bundle: fake_index)
 
     out_dir = tmp_path / "out"
     run_patch(css_dir=skin, out_dir=out_dir, bundle=None,
@@ -140,7 +143,8 @@ def test_hints_asset_filter_limits_targets(tmp_path: Path, monkeypatch):
         }),
         encoding="utf-8",
     )
-    (skin / "colours" / "base.uss").write_text(":root{--primary:#334455;}\n", encoding="utf-8")
+    (skin / "colours" /
+     "base.uss").write_text(":root{--primary:#334455;}\n", encoding="utf-8")
     (skin / "hints.txt").write_text("asset: StyleB\n", encoding="utf-8")
 
     # Fake UnityPy env with two assets as before

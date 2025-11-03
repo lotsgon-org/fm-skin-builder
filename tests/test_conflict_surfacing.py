@@ -98,7 +98,8 @@ def test_conflict_surfacing_logs_multi_asset_touch(tmp_path: Path, monkeypatch, 
         encoding="utf-8",
     )
     # Use fallback synthetic selector .rule-0 to avoid relying on complex selector wiring in tests
-    (skin / "colours" / "override.uss").write_text(".rule-0{color:#112233;}\n", encoding="utf-8")
+    (skin / "colours" /
+     "override.uss").write_text(".rule-0{color:#112233;}\n", encoding="utf-8")
 
     # Build two assets with one rule each; without complex selectors, patcher uses fallback .rule-0 selector
     strings = ["--x"]  # not used here
@@ -110,7 +111,8 @@ def test_conflict_surfacing_logs_multi_asset_touch(tmp_path: Path, monkeypatch, 
     dataB = FakeData("StyleB", strings, colors2, [ruleB], [])
 
     from src.core import css_patcher as cp
-    cp.UnityPy = SimpleNamespace(load=lambda path: FakeEnv([FakeObj(dataA), FakeObj(dataB)]))
+    cp.UnityPy = SimpleNamespace(
+        load=lambda path: FakeEnv([FakeObj(dataA), FakeObj(dataB)]))
 
     caplog.set_level("INFO")
     out_dir = tmp_path / "out"

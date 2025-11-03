@@ -174,7 +174,8 @@ def test_cli_patch_dry_run_produces_no_outputs(tmp_path, monkeypatch):
         }),
         encoding="utf-8",
     )
-    (skin / "colours" / "base.uss").write_text(":root{--primary:#112233;}\n", encoding="utf-8")
+    (skin / "colours" /
+     "base.uss").write_text(":root{--primary:#112233;}\n", encoding="utf-8")
 
     # Mock UnityPy
     from src.core import css_patcher as cp
@@ -184,7 +185,8 @@ def test_cli_patch_dry_run_produces_no_outputs(tmp_path, monkeypatch):
     # Act: call CLI main with argv including --dry-run and --debug-export (which should be ignored)
     out_dir = tmp_path / "out_dry"
     from src.cli import main as cli_main
-    argv = ["prog", "patch", str(skin), "--out", str(out_dir), "--debug-export", "--dry-run"]
+    argv = ["prog", "patch", str(skin), "--out",
+            str(out_dir), "--debug-export", "--dry-run"]
     monkeypatch.setattr(sys, "argv", argv, raising=False)
     cli_main.main()
 
