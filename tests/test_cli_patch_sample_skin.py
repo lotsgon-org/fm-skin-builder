@@ -1,0 +1,99 @@
+from pathlib import Path
+from types import SimpleNamespace
+import json
+import shutil
+import sys
+
+
+def fake_unity_env():
+    class FakeColor:
+        def __init__(self, r=0.0, g=0.0, b=0.0, a=1.0):
+            self.r, self.g, self.b, self.a = r, g, b, a
+
+    class FakeValue:
+        def __init__(self, t, idx):
+            self.m_ValueType = t
+            self.valueIndex = idx
+
+    class FakeProperty:
+        def __init__(self, name, values):
+            self.m_Name = name
+            self.m_Values = values
+
+    class FakeRule:
+        def __init__(self, props):
+            self.m_Properties = props
+
+    class FakeData:
+        def __init__(self, name, strings, colors, rules):
+            self.m_Name = name
+            self.strings = strings
+            self.colors = colors
+            self.m_Rules = rules
+
+        def save(self):
+            self._saved = True
+
+    class FakeObjType:
+        def __init__(self, name):
+            self.name = name
+
+    class FakeObj:
+        def __init__(self, data):
+            self.type = FakeObjType("MonoBehaviour")
+            self._data = data
+
+        def read(self):
+            return self._data
+
+    class FakeFile:
+        def save(self):
+            return b"bundle-bytes"
+
+    class FakeEnv:
+        def __init__(self, objects):
+            self.objects = objects
+            self.file = FakeFile()
+
+    colors = [FakeColor(0.0, 0.0, 0.0, 1.0)]
+    strings = ["--primary"]
+    rules = [FakeRule([FakeProperty("color", [FakeValue(3, 0), FakeValue(4, 0)])])]
+    data = FakeData("Style", strings, colors, rules)
+    return FakeEnv([FakeObj(data)])
+
+
+def test_cli_patch_uses_sample_skin(tmp_path, monkeypatch):
+    # Locate sample skin in repo
+    repo_root = Path(__file__).resolve().parent.parent
+    sample_skin = repo_root / "skins" / "test_skin"
+    assert sample_skin.exists()
+
+    # Copy sample skin to tmp workspace and fix bundle path
+    skin_copy = tmp_path / "skins" / "test_skin"
+    shutil.copytree(sample_skin, skin_copy)
+    bundle_file = tmp_path / "fm_base.bundle"
+    bundle_file.write_bytes(b"orig")
+    cfg_path = skin_copy / "config.json"
+    cfg = json.loads(cfg_path.read_text(encoding="utf-8"))
+    cfg["target_bundle"] = str(bundle_file)
+    cfg_path.write_text(json.dumps(cfg), encoding="utf-8")
+
+    # Mock UnityPy
+    from src.core import css_patcher as cp
+    cp.UnityPy = SimpleNamespace(load=lambda path: fake_unity_env())
+
+    # Run CLI
+    out_dir = tmp_path / "out"
+    from src.cli import main as cli_main
+    argv = ["prog", "patch", str(skin_copy), "--out", str(out_dir), "--debug-export"]
+    monkeypatch.setattr(sys, "argv", argv, raising=False)
+    cli_main.main()
+
+    # Verify outputs
+    assert out_dir.exists()
+    assert any(p.name.endswith("_modified.bundle") for p in out_dir.iterdir())
+    debug_dir = out_dir / "debug_uss"
+    assert debug_dir.exists()
+    files = {p.name for p in debug_dir.iterdir()}
+    assert any(n.startswith("original_") for n in files)
+    assert any(n.startswith("patched_") for n in files)

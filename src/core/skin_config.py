@@ -1,5 +1,6 @@
 from __future__ import annotations
 from pydantic import BaseModel, Field
+from typing import Optional, Dict
 from pathlib import Path
 import json
 
@@ -8,13 +9,13 @@ class SkinConfigModel(BaseModel):
     name: str
     target_bundle: str
     output_bundle: str
-    overrides: dict[str, str] = Field(default_factory=dict)
-    description: str | None = None
+    overrides: Dict[str, str] = Field(default_factory=dict)
+    description: Optional[str] = None
 
 class SkinConfig:
     def __init__(self, path: Path):
         self.path = path
-        self.model: SkinConfigModel | None = None
+        self.model: Optional[SkinConfigModel] = None
 
     def load(self) -> SkinConfigModel:
         data = json.loads(self.path.read_text(encoding="utf-8"))

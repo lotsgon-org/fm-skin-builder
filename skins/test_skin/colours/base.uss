@@ -1,0 +1,8 @@
+:root {
+  --primary: #112233;
+  --accent: #33AAFFCC; /* with alpha */
+}
+
+.green {
+  color: #f200ff;
+}

@@ -7,3 +7,4 @@ backups/
 .DS_Store
 .pytest_cache/
 dist/
+bundles/

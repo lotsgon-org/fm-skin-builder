@@ -26,7 +26,7 @@ src/
 
 ## 🧰 Technologies
 
-- Python 3.11+
+- Python 3.9 (Compatible with UnityPy)
 - UnityPy (planned) or similar for bundle manipulation
 - Tkinter / Qt for local GUI
 - GitHub Actions + pytest for CI
