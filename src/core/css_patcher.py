@@ -874,7 +874,8 @@ def infer_bundle_files(css_dir: Path) -> List[Path]:
     repo_root = css_dir.parent.parent
     bundles_dir = repo_root / "bundles"
     if bundles_dir.exists() and bundles_dir.is_dir():
-        found = sorted([p for p in bundles_dir.iterdir() if p.suffix == ".bundle"])
+        found = sorted([p for p in bundles_dir.iterdir()
+                       if p.suffix == ".bundle"])
         if found:
             log.info(f"Inferred bundles directory: {bundles_dir}")
             return found
@@ -976,7 +977,8 @@ def run_patch(css_dir: Path, out_dir: Path, bundle: Optional[Path] = None, patch
         if includes is None:
             should_swap = False
         else:
-            should_swap = any(x.strip().lower() in {"assets/icons", "assets/backgrounds"} for x in includes)
+            should_swap = any(x.strip().lower() in {
+                              "assets/icons", "assets/backgrounds"} for x in includes)
         if should_swap:
             swap_textures(css_dir, b, out_dir, dry_run=dry_run)
 

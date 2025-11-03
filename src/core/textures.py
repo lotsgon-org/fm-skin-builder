@@ -68,7 +68,8 @@ def _swap_textures_in_env(env, replacements: Dict[str, bytes]) -> int:
                     data.save()
                 except Exception:
                     pass
-            log.info(f"  [TEXTURE] Replaced Texture2D '{name}' ({len(buf)} bytes)")
+            log.info(
+                f"  [TEXTURE] Replaced Texture2D '{name}' ({len(buf)} bytes)")
         except Exception as e:
             log.warning(f"  [TEXTURE] Failed to replace texture '{name}': {e}")
     return replaced
@@ -96,7 +97,8 @@ def swap_textures(css_dir: Path, bundle_path: Path, out_dir: Path, dry_run: bool
         log.info("No texture replacements applied.")
         return None
     if dry_run:
-        log.info(f"[DRY-RUN] Would replace {count} textures in {bundle_path.name}")
+        log.info(
+            f"[DRY-RUN] Would replace {count} textures in {bundle_path.name}")
         return None
     # Write out modified bundle next to CSS patch outputs
     out_dir.mkdir(parents=True, exist_ok=True)
