@@ -1,11 +1,12 @@
 from __future__ import annotations
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple, DefaultDict
+from typing import Dict, List, Optional, Tuple, DefaultDict, NamedTuple
 from collections import defaultdict
 import os
 from io import BytesIO
 
 import UnityPy
+import gc
 
 from .logger import get_logger
 
@@ -78,6 +79,8 @@ def _swap_textures_in_env(env, replacements: Dict[str, bytes], repl_exts: Option
     # Group env textures by base name and scale
     env_by_base: DefaultDict[str, Dict[int, object]] = defaultdict(dict)
     env_exts: DefaultDict[str, Dict[int, Optional[str]]] = defaultdict(dict)
+    env_pid_by_base: DefaultDict[str,
+                                 Dict[int, Optional[int]]] = defaultdict(dict)
     tex_by_pathid: Dict[int, Tuple[str, int, object]] = {}
     for obj in getattr(env, "objects", []):
         if getattr(getattr(obj, "type", None), "name", None) != "Texture2D":
@@ -98,9 +101,12 @@ def _swap_textures_in_env(env, replacements: Dict[str, bytes], repl_exts: Option
         path_id = getattr(obj, "path_id", None)
         if isinstance(path_id, int):
             tex_by_pathid[path_id] = (base, scale, data)
+        env_pid_by_base[base][scale] = path_id if isinstance(
+            path_id, int) else None
 
     # Collect alias mappings from AssetBundle containers and Sprites to Texture2D path IDs
     alias_entries: List[Tuple[str, int]] = []  # (alias_name, target_path_id)
+    sprite_refs_by_pid: Dict[int, int] = {}
     for obj in getattr(env, "objects", []):
         tname = getattr(getattr(obj, "type", None), "name", None)
         if tname == "AssetBundle":
@@ -150,6 +156,7 @@ def _swap_textures_in_env(env, replacements: Dict[str, bytes], repl_exts: Option
                 pid = None
             if isinstance(pid, int):
                 alias_entries.append((str(alias), pid))
+                sprite_refs_by_pid[pid] = sprite_refs_by_pid.get(pid, 0) + 1
 
     # Register aliases as additional base/scale keys pointing to the same Texture2D data
     for alias_name, pid in alias_entries:
@@ -164,22 +171,55 @@ def _swap_textures_in_env(env, replacements: Dict[str, bytes], repl_exts: Option
                     env_ext = env_exts.get(_orig_base, {}).get(_orig_scale)
                 env_exts[base][scale] = env_ext
 
-    # Group replacements by base name and scale
+    # Build source replacements by base/scale from files
+    src_by_base: DefaultDict[str, Dict[int, bytes]] = defaultdict(dict)
+    src_ext_by_base: DefaultDict[str,
+                                 Dict[int, Optional[str]]] = defaultdict(dict)
+    for repl_name, buf in replacements.items():
+        sbase, sscale = _parse_base_and_scale(repl_name)
+        src_by_base[sbase][sscale] = buf
+        if repl_exts is not None:
+            src_ext_by_base[sbase][sscale] = repl_exts.get(repl_name)
+
+    # Plan final replacements (target_base/scale -> bytes) considering mapping (target→source only)
     repl_by_base: DefaultDict[str, Dict[int, bytes]] = defaultdict(dict)
     repl_ext_by_base: DefaultDict[str,
                                   Dict[int, Optional[str]]] = defaultdict(dict)
-    for repl_name, buf in replacements.items():
-        base, scale = _parse_base_and_scale(repl_name)
-        # Apply optional name mapping per base, allow mapping to include variant suffix which overrides scale
-        if name_map and base in name_map:
-            mapped = name_map[base]
-            mbase, mscale = _parse_base_and_scale(mapped)
-            base = mbase
-            if mscale != 1:
-                scale = mscale
-        repl_by_base[base][scale] = buf
-        if repl_exts is not None:
-            repl_ext_by_base[base][scale] = repl_exts.get(repl_name)
+    used_sources: set = set()
+    if name_map:
+        # Mapping: target_base(±variant) -> source_base
+        for tkey, sval in name_map.items():
+            if not isinstance(tkey, str) or not isinstance(sval, str):
+                continue
+            tbase, tscale = _parse_base_and_scale(tkey)
+            sbase, _ = _parse_base_and_scale(sval)
+            s_scales = src_by_base.get(sbase)
+            if not s_scales:
+                continue
+            if tscale != 1:
+                if tscale in s_scales:
+                    repl_by_base[tbase][tscale] = s_scales[tscale]
+                    if repl_exts is not None and tscale in src_ext_by_base.get(sbase, {}):
+                        repl_ext_by_base[tbase][tscale] = src_ext_by_base[sbase][tscale]
+                    used_sources.add((sbase, tscale))
+                else:
+                    log.warning(
+                        f"[TEXTURE] Mapping for '{tkey}' requested {tscale}x but no replacement scale found for source '{sbase}'.")
+            else:
+                for sscale, buf in s_scales.items():
+                    repl_by_base[tbase][sscale] = buf
+                    if repl_exts is not None and sscale in src_ext_by_base.get(sbase, {}):
+                        repl_ext_by_base[tbase][sscale] = src_ext_by_base[sbase][sscale]
+                    used_sources.add((sbase, sscale))
+
+    # Identity mapping for any sources not covered by mapping
+    for sbase, scale_map in src_by_base.items():
+        for sscale, buf in scale_map.items():
+            if (sbase, sscale) in used_sources:
+                continue
+            repl_by_base[sbase][sscale] = buf
+            if repl_exts is not None and sscale in src_ext_by_base.get(sbase, {}):
+                repl_ext_by_base[sbase][sscale] = src_ext_by_base[sbase][sscale]
 
     # Warn about variant coverage
     for base, variants in env_by_base.items():
@@ -208,6 +248,12 @@ def _swap_textures_in_env(env, replacements: Dict[str, bytes], repl_exts: Option
                 # Replacement exists for variant that bundle doesn't have
                 log.debug(
                     f"[TEXTURE] No matching asset variant for '{base}' at {scale}x; ignoring replacement.")
+                continue
+            # Block atlas replacements: if this texture appears to be shared by multiple Sprites
+            pid = env_pid_by_base.get(base, {}).get(scale)
+            if isinstance(pid, int) and sprite_refs_by_pid.get(pid, 0) > 1:
+                log.error(
+                    f"[TEXTURE] Replacement blocked: target '{base}' at {scale}x is shared by {sprite_refs_by_pid[pid]} sprites (atlas). Atlas replacement is not supported yet.")
                 continue
             try:
                 # Prefer PIL path for set_image when available
@@ -267,7 +313,19 @@ def _swap_textures_in_env(env, replacements: Dict[str, bytes], repl_exts: Option
         if sample:
             log.info(
                 f"[TEXTURE] No matches. Candidate names include: {sample} ...")
+        # If bundle has Sprites but their referenced textures aren't present in this bundle, hint about cross-bundle textures
+        missing_refs = []
+        for alias_name, pid in alias_entries:
+            if isinstance(pid, int) and pid not in tex_by_pathid:
+                missing_refs.append(alias_name)
+        if missing_refs:
+            log.info("[TEXTURE] This bundle contains Sprites/aliases whose Texture2D data is in another bundle. Try patching the bundle that actually contains the textures (often '*_assets_common.bundle').")
     return replaced
+
+
+class TextureSwapResult(NamedTuple):
+    replaced_count: int
+    out_file: Optional[Path]
 
 
 def swap_textures(
@@ -276,7 +334,7 @@ def swap_textures(
     includes: List[str],
     out_dir: Path,
     dry_run: bool = False,
-) -> Optional[Path]:
+) -> TextureSwapResult:
     """Swap textures in bundle based on skin assets folders.
 
     - icons from skins/<skin>/assets/icons
@@ -326,17 +384,35 @@ def swap_textures(
             _load_map_file(skin_dir / "assets" / sub / fname)
 
     if not replacements:
-        return None
+        return TextureSwapResult(0, None)
 
     env = UnityPy.load(str(bundle_path))
     count = _swap_textures_in_env(
         env, replacements, repl_exts, name_map or None)
     if count == 0:
-        return None
+        # Cleanup UnityPy env before returning
+        try:
+            del env
+        except Exception:
+            pass
+        try:
+            gc.collect()
+        except Exception:
+            pass
+        return TextureSwapResult(0, None)
     if dry_run:
         log.info(
             f"[DRY-RUN] Would replace {count} textures in {bundle_path.name}")
-        return None
+        # Cleanup UnityPy env before returning
+        try:
+            del env
+        except Exception:
+            pass
+        try:
+            gc.collect()
+        except Exception:
+            pass
+        return TextureSwapResult(count, None)
 
     out_dir.mkdir(parents=True, exist_ok=True)
     name, ext = os.path.splitext(bundle_path.name)
@@ -344,4 +420,13 @@ def swap_textures(
     with open(out_file, "wb") as f:
         f.write(env.file.save())
     log.info(f"💾 Saved texture-swapped bundle → {out_file}")
-    return out_file
+    # Cleanup UnityPy env after saving
+    try:
+        del env
+    except Exception:
+        pass
+    try:
+        gc.collect()
+    except Exception:
+        pass
+    return TextureSwapResult(count, out_file)
