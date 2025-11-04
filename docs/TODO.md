@@ -26,3 +26,11 @@ Future work
 - [ ] Data assets patching (+CustomData)
 - [ ] Safe var/class augmentation phases
 - [ ] Auto-discovery of common installation paths (bundle root)
+
+Known Limitations
+
+- [ ] **Vector sprite modification** - While we can successfully modify vector sprite mesh data (vertices, indices, colors) in Sprite objects, these changes don't appear visually in-game. The modified sprites reference a SpriteAtlas (external bundle) which seems to take precedence during rendering. Possible solutions to investigate:
+  - Modify the actual SpriteAtlas texture that kit sprites reference
+  - Find the correct render flags/settings to force mesh rendering over texture
+  - Investigate if kit sprites use a special shader that ignores vertex data
+  - Example affected sprites: `kit-squad-outfield`, `kit-squad-goalkeeper` in `ui-icons_assets_*.bundle`

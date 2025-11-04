@@ -1032,7 +1032,7 @@ def run_patch(css_dir: Path, out_dir: Path, bundle: Optional[Path] = None, patch
         stems: List[str] = []
         if root.exists():
             for p in root.glob("*.*"):
-                if p.suffix.lower() in {".png", ".jpg", ".jpeg"}:
+                if p.suffix.lower() in {".png", ".jpg", ".jpeg", ".svg"}:
                     stems.append(p.stem)
         return stems
 
@@ -1151,6 +1151,7 @@ def run_patch(css_dir: Path, out_dir: Path, bundle: Optional[Path] = None, patch
                                     continue
                                 texture_names.add(nstr)
                 # Basic name intersection using target mapping keys and raw stems
+                # Also support wildcard patterns and scale-agnostic matching (prefix matching)
                 has_interest = False
                 if texture_names:
                     # compare case-sensitively first, then lower
@@ -1158,7 +1159,27 @@ def run_patch(css_dir: Path, out_dir: Path, bundle: Optional[Path] = None, patch
                         has_interest = True
                     else:
                         lowset = {n.lower() for n in texture_names}
-                        if any(k.lower() in lowset for k in target_names_from_map) or any(s.lower() in lowset for s in replace_stems):
+                        # Check if any mapping key matches (exact or prefix for scale-agnostic)
+                        for k in target_names_from_map:
+                            k_lower = k.lower()
+                            # Exact match
+                            if k_lower in lowset:
+                                has_interest = True
+                                break
+                            # Wildcard pattern
+                            if '*' in k or '?' in k:
+                                import fnmatch
+                                if any(fnmatch.fnmatch(n.lower(), k_lower) for n in texture_names):
+                                    has_interest = True
+                                    break
+                            # Scale-agnostic: check if any texture starts with mapping key
+                            # e.g., "settings-large" matches "settings-large_1x", "settings-large_2x", etc.
+                            if any(n.lower().startswith(k_lower + '_') or n.lower() == k_lower for n in texture_names):
+                                has_interest = True
+                                break
+
+                        # Also check raw file stems
+                        if not has_interest and any(s.lower() in lowset for s in replace_stems):
                             has_interest = True
                 else:
                     # No index? Use heuristic on bundle filename

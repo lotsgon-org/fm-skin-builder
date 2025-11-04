@@ -70,6 +70,21 @@ def scan_bundle(bundle_path: Path, out_dir: Path, export_uss: bool = True) -> Di
             name = getattr(data, "m_Name", None) or getattr(data, "name", None)
             if name:
                 index["sprites"].append(str(name))
+        elif tname == "SpriteAtlas":
+            # Index sprites from SpriteAtlas (for sprite overlay operations)
+            try:
+                data = obj.read()
+            except Exception:
+                continue
+            packed_names = getattr(data, "m_PackedSpriteNamesToIndex", None)
+            if packed_names:
+                try:
+                    # m_PackedSpriteNamesToIndex is a list of sprite names
+                    for sprite_name in list(packed_names):
+                        if sprite_name:
+                            index["sprites"].append(str(sprite_name))
+                except Exception:
+                    pass
         elif tname == "AssetBundle":
             try:
                 data = obj.read()
