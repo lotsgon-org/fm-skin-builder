@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Tuple, Optional
 
 from .logger import get_logger
 
@@ -18,35 +18,144 @@ __all__ = [
 ]
 
 
+_HEX_SHORTHAND_PATTERN = re.compile(r"^#([0-9a-fA-F]{3,4})$")
+_HEX_FULL_PATTERN = re.compile(r"^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$")
+_RGB_PATTERN = re.compile(r"^rgba?\(([^)]+)\)$", re.IGNORECASE)
+
+
+def _clamp(value: float, minimum: float, maximum: float) -> float:
+    return max(minimum, min(maximum, value))
+
+
+def _parse_rgb_component(token: str) -> Optional[int]:
+    token = token.strip()
+    if token.endswith("%"):
+        try:
+            percent = float(token[:-1].strip())
+        except ValueError:
+            return None
+        percent = _clamp(percent, 0.0, 100.0)
+        return int(round((percent / 100.0) * 255))
+    try:
+        value = float(token)
+    except ValueError:
+        return None
+    # Treat integers up to 255 as 0-255 range. If the token looks like a float between 0-1, scale.
+    if value <= 1.0 and ("." in token or token.strip().startswith("0")):
+        value = value * 255.0
+    return int(round(_clamp(value, 0.0, 255.0)))
+
+
+def _parse_alpha_component(token: str) -> float:
+    token = token.strip()
+    if token.endswith("%"):
+        try:
+            percent = float(token[:-1].strip())
+        except ValueError:
+            return 1.0
+        percent = _clamp(percent, 0.0, 100.0)
+        return percent / 100.0
+    try:
+        value = float(token)
+    except ValueError:
+        return 1.0
+    if value > 1.0:
+        value = value / 255.0
+    return _clamp(value, 0.0, 1.0)
+
+
+def _expand_shorthand_hex(raw: str) -> str:
+    chars = list(raw)
+    expanded = "".join(c * 2 for c in chars)
+    return expanded
+
+
+def normalize_css_color(raw_value: str) -> Optional[str]:
+    """Normalise CSS colours (hex/rgb/rgba) to #RRGGBB or #RRGGBBAA strings."""
+
+    value = raw_value.strip()
+    if not value:
+        return None
+
+    match = _HEX_SHORTHAND_PATTERN.match(value)
+    if match:
+        expanded = _expand_shorthand_hex(match.group(1))
+        if len(expanded) == 6:
+            return f"#{expanded.upper()}"
+        if len(expanded) == 8:
+            return f"#{expanded.upper()}"
+
+    match = _HEX_FULL_PATTERN.match(value)
+    if match:
+        return f"#{match.group(1).upper()}"
+
+    match = _RGB_PATTERN.match(value)
+    if match:
+        components = [token.strip() for token in match.group(1).split(",")]
+        if len(components) not in (3, 4):
+            return None
+        r = _parse_rgb_component(components[0])
+        g = _parse_rgb_component(components[1])
+        b = _parse_rgb_component(components[2])
+        if None in (r, g, b):
+            return None
+        a = 1.0
+        if len(components) == 4:
+            a = _parse_alpha_component(components[3])
+        alpha_byte = int(round(_clamp(a, 0.0, 1.0) * 255))
+        if alpha_byte == 255:
+            return f"#{r:02X}{g:02X}{b:02X}"
+        return f"#{r:02X}{g:02X}{b:02X}{alpha_byte:02X}"
+
+    return None
+
+
 def load_css_vars(path: Path) -> Dict[str, str]:
-    """Parse a .css/.uss file for --var: #hex; pairs."""
+    """Parse a .css/.uss file for `--var: <color>;` pairs with hex/rgb/rgba support."""
+
     text = path.read_text(encoding="utf-8")
-    matches = re.findall(r"--([\w-]+):\s*(#[0-9a-fA-F]{6,8});", text)
-    css = {f"--{k}": v for k, v in matches}
-    log.info(f"🎨 Loaded {len(css)} CSS variables from {path}")
+    matches = re.findall(r"--([\w-]+)\s*:\s*([^;]+);", text)
+    css: Dict[str, str] = {}
+    for name, value in matches:
+        normalised = normalize_css_color(value)
+        if not normalised:
+            log.warning(
+                "Skipping unsupported CSS colour '%s' for --%s in %s", value.strip(), name, path)
+            continue
+        css[f"--{name}"] = normalised
+    log.info("🎨 Loaded %s CSS variables from %s", len(css), path)
     return css
 
 
 def load_css_selector_overrides(path: Path) -> Dict[Tuple[str, str], str]:
-    """Parse selector/property -> #hex pairs (e.g., .green { color: #00D3E7; })."""
+    """Parse selector/property -> colour pairs (hex/rgb/rgba)."""
+
     text = path.read_text(encoding="utf-8")
     selector_blocks = re.findall(r"(\.[\w-]+)\s*\{([^}]*)\}", text)
     selector_overrides: Dict[Tuple[str, str], str] = {}
     for selector, block in selector_blocks:
         props = re.findall(
-            r"([\w-]+)\s*:\s*(#[0-9a-fA-F]{6,8})(?:\s*;|\s*(?=\n|$))",
+            r"([\w-]+)\s*:\s*([^;\n]+?)(?:;|\s*(?=\n|$))",
             block,
         )
-        for prop, hexval in props:
-            selector_overrides[(selector.strip(), prop.strip())] = hexval
-            selector_overrides[(selector.strip().lstrip(
-                "."), prop.strip())] = hexval
+        for prop, value in props:
+            normalised = normalize_css_color(value)
+            if not normalised:
+                continue
+            key = (selector.strip(), prop.strip())
+            selector_overrides[key] = normalised
+            selector_overrides[(key[0].lstrip("."), key[1])] = normalised
     return selector_overrides
 
 
 def hex_to_rgba(hex_str: str) -> Tuple[float, float, float, float]:
     """Convert #RRGGBB or #RRGGBBAA to 0-1 floats."""
+
     s = hex_str.lstrip("#")
+    if len(s) == 3:
+        s = _expand_shorthand_hex(s)
+    elif len(s) == 4:
+        s = _expand_shorthand_hex(s)
     r = int(s[0:2], 16) / 255.0
     g = int(s[2:4], 16) / 255.0
     b = int(s[4:6], 16) / 255.0

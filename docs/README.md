@@ -4,6 +4,7 @@
 - CLI usage: CLI_GUIDE.md (step-by-step command walkthrough)
 - Architecture: ARCHITECTURE.md (how patching works)
 - Roadmap: ROADMAP.md
+- CSS property override roadmap: roadmap/property-overrides.md
 - Developer TODO: TODO.md
 
 ### Recipes
