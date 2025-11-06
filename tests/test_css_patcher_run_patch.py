@@ -123,7 +123,7 @@ def test_run_patch_infers_bundle_and_creates_backup(tmp_path: Path, monkeypatch)
 
     # A modified bundle should be written
     assert out_dir.exists()
-    assert any(p.name.endswith("_modified.bundle") for p in out_dir.iterdir())
+    assert (out_dir / "fm_base.bundle").exists()
     # A backup should exist next to the bundle
     backups = list(tmp_path.glob("fm_base.bundle.*.bak"))
     # The timestamp name is variable; at least one backup should be created

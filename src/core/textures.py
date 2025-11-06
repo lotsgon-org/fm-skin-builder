@@ -959,7 +959,7 @@ def swap_textures(
 
     out_dir.mkdir(parents=True, exist_ok=True)
     name, ext = os.path.splitext(bundle_path.name)
-    out_file = out_dir / f"{name}_modified{ext}"
+    out_file = out_dir / f"{name}{ext}"
     with open(out_file, "wb") as f:
         f.write(env.file.save())
     log.info(f"💾 Saved texture-swapped bundle → {out_file}")

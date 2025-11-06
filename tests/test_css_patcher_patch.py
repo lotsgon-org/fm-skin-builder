@@ -105,8 +105,8 @@ def test_var_based_patch_and_save(tmp_path: Path):
     # Verify color was patched to red
     r, g, b, a = colors[0].r, colors[0].g, colors[0].b, colors[0].a
     assert (r, g, b, a) == (1.0, 0.0, 0.0, 1.0)
-    # Verify output bundle exists
-    assert any(p.name.endswith("_modified.bundle") for p in out_dir.iterdir())
+    # Verify output bundle exists with original name
+    assert (out_dir / "fm_base.bundle").exists()
 
 
 def test_selector_override_patch(tmp_path: Path):

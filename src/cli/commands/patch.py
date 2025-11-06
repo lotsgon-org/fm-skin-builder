@@ -8,8 +8,11 @@ log = get_logger(__name__)
 
 
 def run(args) -> None:
-    css_dir = Path(args.css)
-    out_dir = Path(args.out)
+    css_dir = Path(args.css).resolve()
+    if args.out:
+        out_dir = Path(args.out)
+    else:
+        out_dir = css_dir / "packages"
     bundle = Path(args.bundle) if args.bundle else None
     result = run_patch(
         css_dir=css_dir,

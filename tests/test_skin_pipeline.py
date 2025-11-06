@@ -31,7 +31,7 @@ class FakeBundleContext:
         out_dir: Path,
         *,
         dry_run: bool = False,
-        suffix: str = "_modified",
+        suffix: str = "",
     ) -> Optional[Path]:
         if dry_run or not self._dirty:
             return None

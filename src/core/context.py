@@ -89,7 +89,7 @@ class BundleContext:
         out_dir: Path,
         *,
         dry_run: bool = False,
-        suffix: str = "_modified",
+        suffix: str = "",
     ) -> Optional[Path]:
         if not self._dirty or dry_run:
             return None
@@ -99,7 +99,7 @@ class BundleContext:
         out_path = out_dir / f"{name}{suffix}{ext}"
         with out_path.open("wb") as fh:
             fh.write(self.env.file.save())
-        self._cleanup_stray_originals(out_dir, name, ext)
+        self._cleanup_stray_originals(out_dir, name, ext, out_path)
         return out_path
 
     def dispose(self) -> None:
@@ -120,15 +120,15 @@ class BundleContext:
             # Backup best-effort only.
             return
 
-    def _cleanup_stray_originals(self, out_dir: Path, name: str, ext: str) -> None:
+    def _cleanup_stray_originals(self, out_dir: Path, name: str, ext: str, new_path: Path) -> None:
         orig_out_file = out_dir / f"{name}{ext}"
-        if orig_out_file.exists():
+        if orig_out_file.exists() and orig_out_file != new_path:
             try:
                 orig_out_file.unlink()
             except Exception:
                 pass
         cwd_orig_file = Path.cwd() / f"{name}{ext}"
-        if cwd_orig_file != orig_out_file and cwd_orig_file.exists():
+        if cwd_orig_file.exists() and cwd_orig_file not in {new_path, orig_out_file}:
             try:
                 cwd_orig_file.unlink()
             except Exception:
