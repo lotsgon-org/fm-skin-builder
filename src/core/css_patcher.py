@@ -462,7 +462,8 @@ class CssPatcher:
                 new_index = len(colors) - 1
 
                 handle = next(
-                    (val for val in values if getattr(val, "m_ValueType", None) in {3, 8, 10}),
+                    (val for val in values if getattr(
+                        val, "m_ValueType", None) in {3, 8, 10}),
                     values[0],
                 )
                 setattr(handle, "m_ValueType", 4)

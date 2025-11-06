@@ -212,7 +212,8 @@ def test_root_level_literal_variable_updates(tmp_path: Path):
 
     out_dir = tmp_path / "out_literal"
     target = "#CC0714"
-    patcher = cp.CssPatcher(css_vars={"--literal-accent": target}, selector_overrides={}, patch_direct=False, debug_export_dir=None)
+    patcher = cp.CssPatcher(css_vars={"--literal-accent": target},
+                            selector_overrides={}, patch_direct=False, debug_export_dir=None)
     patcher.patch_bundle_file(tmp_path / "ui.bundle", out_dir)
 
     R, G, B, A = hex_to_rgba(target)
