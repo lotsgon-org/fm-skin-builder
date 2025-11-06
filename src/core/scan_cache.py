@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any, Dict, Optional, Set, Tuple
 
 from .logger import get_logger
+from .cache import cache_dir
 
 log = get_logger(__name__)
 
@@ -135,3 +136,22 @@ def load_or_refresh_candidates(
                             candidates.add(asset)
 
     return candidates if candidates else None
+
+
+def load_cached_bundle_index(
+    css_dir: Path,
+    bundle: Path,
+    *,
+    skin_cache_dir: Optional[Path] = None,
+) -> Optional[Dict[str, Any]]:
+    """Load a cached scan index for *bundle*, falling back to the standard cache layout."""
+
+    cache_root = (
+        skin_cache_dir
+        if skin_cache_dir is not None
+        else cache_dir(root=css_dir.parent.parent) / css_dir.name
+    )
+    try:
+        return load_scan_index(cache_root, bundle)
+    except Exception:
+        return None

@@ -26,12 +26,17 @@ from .css_utils import (
     load_css_vars,
     serialize_stylesheet_to_uss,
 )
-from .texture_utils import collect_replacement_stems, load_texture_name_map
+from .texture_utils import (
+    collect_replacement_stems,
+    gather_texture_names_from_index,
+    load_texture_name_map,
+    should_swap_textures,
+)
 from .scan_cache import (
     load_or_refresh_candidates as _load_or_refresh_scan_cache,
-    load_scan_index as _load_index,
-    refresh_scan_index as _refresh_index,
+    load_cached_bundle_index,
 )
+from .css_sources import collect_css_from_dir, load_targeting_hints
 from .bundle_paths import infer_bundle_files
 
 log = get_logger(__name__)
@@ -590,102 +595,6 @@ class CssPatcher:
         )
 
 
-# -----------------------------
-# Orchestration helpers (dirs)
-# -----------------------------
-
-def collect_css_from_dir(css_dir: Path) -> Tuple[Dict[str, str], Dict[Tuple[str, str], str]]:
-    """Collect CSS variable and selector overrides from a directory.
-
-    If css_dir looks like a skin folder (has config.json), also scan its 'colours' subfolder.
-    """
-    css_vars: Dict[str, str] = {}
-    selector_overrides: Dict[Tuple[str, str], str] = {}
-
-    files: List[Path] = []
-    if (css_dir / "config.json").exists():
-        # skin root
-        colours = css_dir / "colours"
-        if colours.exists():
-            files.extend(sorted(colours.glob("*.uss")))
-            files.extend(sorted(colours.glob("*.css")))
-        # also allow overrides at root
-        files.extend(sorted(css_dir.glob("*.uss")))
-        files.extend(sorted(css_dir.glob("*.css")))
-    else:
-        files.extend(sorted(css_dir.glob("*.uss")))
-        files.extend(sorted(css_dir.glob("*.css")))
-
-    for f in files:
-        try:
-            css_vars.update(load_css_vars(f))
-            selector_overrides.update(load_css_selector_overrides(f))
-        except Exception as e:
-            log.warning(f"Failed to parse {f}: {e}")
-
-    log.info(
-        f"Total CSS vars: {len(css_vars)}, selector overrides: {len(selector_overrides)} from {len(files)} files")
-    return css_vars, selector_overrides
-
-
-def load_targeting_hints(css_dir: Path) -> Tuple[Optional[Set[str]], Optional[Set[str]], Optional[Set[Tuple[str, str]]]]:
-    """Load optional targeting hints from a skin or CSS directory.
-
-    Supports a simple hints.txt file with lines like:
-      # comments allowed with '#'
-      asset: DialogStyles
-      asset: CommonStyles, ExtraStyles
-      selector: .green
-      selector: .green color
-
-    Returns (assets, selectors, selector_props) where each element is either a set or None if not provided.
-    - assets: set of asset names to include. If provided, we only consider these assets.
-    - selectors: set of selector strings (with or without '.') to include for selector/property overrides.
-    - selector_props: set of (selector, property) tuples to include for selector/property overrides.
-    """
-    # Determine root
-    root = css_dir
-    hints_path = root / "hints.txt"
-    if not hints_path.exists():
-        return None, None, None
-
-    assets: Set[str] = set()
-    selectors: Set[str] = set()
-    selector_props: Set[Tuple[str, str]] = set()
-
-    try:
-        for raw in hints_path.read_text(encoding="utf-8").splitlines():
-            line = raw.strip()
-            if not line or line.startswith("#"):
-                continue
-            # Remove trailing inline comment
-            if "#" in line:
-                line = line.split("#", 1)[0].strip()
-            # asset: name[, name]
-            m_asset = re.match(r"^asset\s*[:=]\s*(.+)$", line, re.IGNORECASE)
-            if m_asset:
-                names = [x.strip() for x in re.split(
-                    r",|;", m_asset.group(1)) if x.strip()]
-                assets.update(names)
-                continue
-            # selector: .sel [prop]
-            m_sel = re.match(r"^selector\s*[:=]\s*(.+)$", line, re.IGNORECASE)
-            if m_sel:
-                rest = m_sel.group(1).strip()
-                # If rest contains whitespace, treat as "<selector> <prop>"
-                if " " in rest:
-                    sel, prop = rest.split(None, 1)
-                    selectors.add(sel.strip())
-                    selector_props.add((sel.strip(), prop.strip()))
-                else:
-                    selectors.add(rest)
-                continue
-    except Exception as e:
-        log.warning(f"Failed to parse targeting hints at {hints_path}: {e}")
-
-    return (assets or None, selectors or None, selector_props or None)
-
-
 @dataclass
 class PipelineOptions:
     patch_direct: bool = False
@@ -771,14 +680,15 @@ class SkinPatchPipeline:
 
         skin_is_known = (self.css_dir / "config.json").exists()
         cache_candidates: Dict[Path, Optional[Set[str]]] = {}
+        skin_cache_dir: Optional[Path] = None
         if self.options.use_scan_cache and skin_is_known:
             try:
-                cdir = cache_dir(
+                skin_cache_dir = cache_dir(
                     root=self.css_dir.parent.parent) / self.css_dir.name
-                cdir.mkdir(parents=True, exist_ok=True)
+                skin_cache_dir.mkdir(parents=True, exist_ok=True)
                 for b in bundle_files:
                     cand = _load_or_refresh_scan_cache(
-                        cdir,
+                        skin_cache_dir,
                         self.css_dir,
                         b,
                         refresh=self.options.refresh_scan_cache,
@@ -789,6 +699,7 @@ class SkinPatchPipeline:
                     cache_candidates[b] = cand
             except Exception as e:
                 log.debug(f"Scan cache unavailable: {e}")
+                skin_cache_dir = None
 
         includes = getattr(cfg_model, "includes", None)
         includes_list: List[str] = list(
@@ -823,122 +734,28 @@ class SkinPatchPipeline:
         texture_replacements_total = 0
         texture_bundles_written = 0
 
-        for b in bundle_files:
-            if self.options.backup:
-                ts = os.environ.get("FM_SKIN_BACKUP_TS") or "backup"
-                backup_path = b.with_suffix(b.suffix + f".{ts}.bak")
-                try:
-                    shutil.copy2(b, backup_path)
-                    log.info(f"🗄️ Backed up original bundle to {backup_path}")
-                except Exception as e:
-                    log.warning(f"Could not backup {b}: {e}")
+        for bundle_path in bundle_files:
+            report = self._process_bundle(
+                bundle_path,
+                css_service=css_service,
+                texture_service=texture_service,
+                cache_candidates=cache_candidates,
+                hints_assets=hints_assets,
+                skin_cache_dir=skin_cache_dir,
+                target_names_from_map=target_names_from_map,
+                replace_stems=replace_stems,
+                want_icons=want_icons,
+                want_bgs=want_bgs,
+            )
 
-            log.info(f"\n=== Patching bundle: {b} ===")
-            cand = cache_candidates.get(b)
-            if hints_assets:
-                if cand is None:
-                    cand = set(hints_assets)
-                else:
-                    cand = set(cand) & set(hints_assets)
-            if cand is not None and len(cand) == 0:
-                log.info(
-                    f"Hint filter excluded all assets for {b.name}; skipping bundle.")
+            if report is None:
                 continue
-
-            do_css = True
-            bname = b.name.lower()
-            if not self.options.refresh_scan_cache and not self.options.use_scan_cache:
-                do_css = True
-            else:
-                if "styles" not in bname:
-                    idx = None
-                    try:
-                        cdir = cache_dir(
-                            root=self.css_dir.parent.parent) / self.css_dir.name
-                        idx = _load_index(cdir, b)
-                    except Exception:
-                        idx = None
-                    if (idx is None) or (not idx.get("assets")):
-                        do_css = False
-
-            report: PatchReport
-            with BundleContext(b) as bundle_ctx:
-                if do_css:
-                    report = css_service.apply(
-                        bundle_ctx, candidate_assets=cand)
-                else:
-                    bundle_ctx.load()
-                    report = PatchReport(
-                        bundle_ctx.bundle_path, dry_run=self.options.dry_run)
-
-                if report.assets_modified:
-                    css_bundles_modified += 1
-
-                if texture_service:
-                    try:
-                        idx = None
-                        try:
-                            cdir = cache_dir(
-                                root=self.css_dir.parent.parent) / self.css_dir.name
-                            idx = _load_index(cdir, b)
-                        except Exception:
-                            idx = None
-                        texture_names = set()
-                        if idx is not None:
-                            for key in ("textures", "aliases", "sprites"):
-                                vals = idx.get(key)
-                                if isinstance(vals, list):
-                                    for n in vals:
-                                        try:
-                                            nstr = str(n)
-                                        except Exception:
-                                            continue
-                                        texture_names.add(nstr)
-                        has_interest = False
-                        if texture_names:
-                            if target_names_from_map & texture_names:
-                                has_interest = True
-                            else:
-                                lowset = {n.lower() for n in texture_names}
-                                for k in target_names_from_map:
-                                    k_lower = k.lower()
-                                    if k_lower in lowset:
-                                        has_interest = True
-                                        break
-                                    if "*" in k or "?" in k:
-                                        import fnmatch
-
-                                        if any(fnmatch.fnmatch(n.lower(), k_lower) for n in texture_names):
-                                            has_interest = True
-                                            break
-                                    if any(
-                                        n.lower().startswith(k_lower + "_") or n.lower() == k_lower
-                                        for n in texture_names
-                                    ):
-                                        has_interest = True
-                                        break
-                                if not has_interest and any(s.lower() in lowset for s in replace_stems):
-                                    has_interest = True
-                        else:
-                            if (want_icons and ("icon" in bname)) or (want_bgs and ("background" in bname)):
-                                has_interest = True
-                        if has_interest:
-                            texture_service.apply(
-                                bundle_ctx, self.css_dir, self.out_dir, report)
-                        else:
-                            log.debug(
-                                "[TEXTURE] Prefilter: skipping bundle with no matching names.")
-                    except Exception as e:
-                        log.warning(
-                            f"[WARN] Texture swap skipped due to error: {e}")
-
-                saved_path = bundle_ctx.save_modified(
-                    self.out_dir, dry_run=self.options.dry_run)
-                if saved_path:
-                    report.mark_saved(saved_path)
 
             if report.summary_lines:
                 summary_lines.extend(report.summary_lines)
+
+            if report.assets_modified:
+                css_bundles_modified += 1
 
             texture_replacements_total += report.texture_replacements
             if not self.options.dry_run and report.texture_replacements > 0:
@@ -954,6 +771,105 @@ class SkinPatchPipeline:
             bundles_requested=bundles_requested,
             summary_lines=summary_lines,
         )
+
+    def _process_bundle(
+        self,
+        bundle_path: Path,
+        *,
+        css_service: CssPatchService,
+        texture_service: Optional[TextureSwapService],
+        cache_candidates: Dict[Path, Optional[Set[str]]],
+        hints_assets: Optional[Set[str]],
+        skin_cache_dir: Optional[Path],
+        target_names_from_map: Set[str],
+        replace_stems: Set[str],
+        want_icons: bool,
+        want_bgs: bool,
+    ) -> Optional[PatchReport]:
+        if self.options.backup:
+            ts = os.environ.get("FM_SKIN_BACKUP_TS") or "backup"
+            backup_path = bundle_path.with_suffix(
+                bundle_path.suffix + f".{ts}.bak")
+            try:
+                shutil.copy2(bundle_path, backup_path)
+                log.info(f"🗄️ Backed up original bundle to {backup_path}")
+            except Exception as exc:
+                log.warning(f"Could not backup {bundle_path}: {exc}")
+
+        log.info(f"\n=== Patching bundle: {bundle_path} ===")
+
+        candidate_assets = cache_candidates.get(bundle_path)
+        if hints_assets:
+            if candidate_assets is None:
+                candidate_assets = set(hints_assets)
+            else:
+                candidate_assets = set(candidate_assets) & set(hints_assets)
+
+        if candidate_assets is not None and len(candidate_assets) == 0:
+            log.info(
+                f"Hint filter excluded all assets for {bundle_path.name}; skipping bundle."
+            )
+            return None
+
+        do_css = True
+        bundle_name_lower = bundle_path.name.lower()
+        bundle_index: Optional[Dict[str, Any]] = None
+        if self.options.refresh_scan_cache or self.options.use_scan_cache:
+            if "styles" not in bundle_name_lower:
+                bundle_index = load_cached_bundle_index(
+                    self.css_dir,
+                    bundle_path,
+                    skin_cache_dir=skin_cache_dir,
+                )
+                if (bundle_index is None) or (not bundle_index.get("assets")):
+                    do_css = False
+
+        with BundleContext(bundle_path) as bundle_ctx:
+            if do_css:
+                report = css_service.apply(
+                    bundle_ctx, candidate_assets=candidate_assets)
+            else:
+                bundle_ctx.load()
+                report = PatchReport(bundle_ctx.bundle_path,
+                                     dry_run=self.options.dry_run)
+
+            if texture_service:
+                if bundle_index is None:
+                    bundle_index = load_cached_bundle_index(
+                        self.css_dir,
+                        bundle_path,
+                        skin_cache_dir=skin_cache_dir,
+                    )
+                texture_names = gather_texture_names_from_index(bundle_index)
+                if should_swap_textures(
+                    bundle_name=bundle_path.name,
+                    texture_names=texture_names,
+                    target_names=target_names_from_map,
+                    replace_stems=replace_stems,
+                    want_icons=want_icons,
+                    want_backgrounds=want_bgs,
+                ):
+                    try:
+                        texture_service.apply(
+                            bundle_ctx,
+                            self.css_dir,
+                            self.out_dir,
+                            report,
+                        )
+                    except Exception as exc:
+                        log.warning(
+                            f"[WARN] Texture swap skipped due to error: {exc}")
+                else:
+                    log.debug(
+                        "[TEXTURE] Prefilter: skipping bundle with no matching names.")
+
+            saved_path = bundle_ctx.save_modified(
+                self.out_dir, dry_run=self.options.dry_run
+            )
+            if saved_path:
+                report.mark_saved(saved_path)
+
+        return report
 
 
 def run_patch(

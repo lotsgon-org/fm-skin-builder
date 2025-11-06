@@ -1,6 +1,11 @@
 from pathlib import Path
 
-from src.core.texture_utils import collect_replacement_stems, load_texture_name_map
+from src.core.texture_utils import (
+    collect_replacement_stems,
+    gather_texture_names_from_index,
+    load_texture_name_map,
+    should_swap_textures,
+)
 
 
 def test_collect_replacement_stems_filters_extensions(tmp_path: Path):
@@ -28,3 +33,57 @@ def test_load_texture_name_map_reads_overrides(tmp_path: Path):
 
     assert mapping["src"] == "dest"
     assert mapping["icon"] == "IconTarget"
+
+
+def test_gather_texture_names_from_index_handles_mixed_values():
+    names = gather_texture_names_from_index(
+        {
+            "textures": ["Icon_A", 123],
+            "aliases": ["icon_b"],
+            "sprites": None,
+        }
+    )
+
+    assert names == {"Icon_A", "123", "icon_b"}
+
+
+def test_should_swap_textures_matches_targets_and_wildcards():
+    names = {"PlayerIcon", "panel_background"}
+
+    assert should_swap_textures(
+        bundle_name="characters_icons.bundle",
+        texture_names=names,
+        target_names={"playericon"},
+        replace_stems=set(),
+        want_icons=False,
+        want_backgrounds=False,
+    )
+
+    assert should_swap_textures(
+        bundle_name="characters.bundle",
+        texture_names=names,
+        target_names={"panel*"},
+        replace_stems=set(),
+        want_icons=False,
+        want_backgrounds=False,
+    )
+
+
+def test_should_swap_textures_falls_back_to_bundle_name():
+    assert should_swap_textures(
+        bundle_name="ui_icons.bundle",
+        texture_names=set(),
+        target_names=set(),
+        replace_stems=set(),
+        want_icons=True,
+        want_backgrounds=False,
+    )
+
+    assert not should_swap_textures(
+        bundle_name="ui_misc.bundle",
+        texture_names=set(),
+        target_names=set(),
+        replace_stems=set(),
+        want_icons=False,
+        want_backgrounds=False,
+    )

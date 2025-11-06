@@ -3,12 +3,15 @@ from __future__ import annotations
 import json
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Set
+import fnmatch
 
 DEFAULT_TEXTURE_EXTENSIONS: Set[str] = {".png", ".jpg", ".jpeg", ".svg"}
 
 __all__ = [
     "collect_replacement_stems",
     "load_texture_name_map",
+    "gather_texture_names_from_index",
+    "should_swap_textures",
 ]
 
 
@@ -49,3 +52,62 @@ def load_texture_name_map(skin_root: Path) -> Dict[str, str]:
             _load_json(sub_assets / fname)
 
     return name_map
+
+
+def gather_texture_names_from_index(index: Optional[Dict[str, object]]) -> Set[str]:
+    """Extract texture-like asset names from a scan index."""
+
+    if not isinstance(index, dict):
+        return set()
+
+    names: Set[str] = set()
+    for key in ("textures", "aliases", "sprites"):
+        values = index.get(key)
+        if isinstance(values, list):
+            for entry in values:
+                try:
+                    names.add(str(entry))
+                except Exception:
+                    continue
+    return names
+
+
+def should_swap_textures(
+    *,
+    bundle_name: str,
+    texture_names: Set[str],
+    target_names: Set[str],
+    replace_stems: Set[str],
+    want_icons: bool,
+    want_backgrounds: bool,
+) -> bool:
+    """Return True when texture swapping should occur for the given bundle."""
+
+    bundle_name_lower = bundle_name.lower()
+    if texture_names:
+        if target_names & texture_names:
+            return True
+
+        lowered = {name.lower() for name in texture_names}
+        for target in target_names:
+            target_lower = target.lower()
+            if target_lower in lowered:
+                return True
+            if any(fnmatch.fnmatch(name.lower(), target_lower) for name in texture_names):
+                return True
+            if any(
+                name.lower().startswith(
+                    f"{target_lower}_") or name.lower() == target_lower
+                for name in texture_names
+            ):
+                return True
+
+        if any(stem.lower() in lowered for stem in replace_stems):
+            return True
+    else:
+        if want_icons and "icon" in bundle_name_lower:
+            return True
+        if want_backgrounds and "background" in bundle_name_lower:
+            return True
+
+    return False
