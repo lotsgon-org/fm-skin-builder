@@ -1,7 +1,7 @@
 from pathlib import Path
 from types import SimpleNamespace
-from src.core.css_patcher import CssPatcher, hex_to_rgba
-import builtins
+from src.core.css_patcher import hex_to_rgba
+from src.core.css_sources import CollectedCss
 
 
 class FakeColor:
@@ -98,8 +98,15 @@ def test_var_based_patch_and_save(tmp_path: Path):
     set_unitypy_in_module(cp, env)
 
     out_dir = tmp_path / "out"
-    patcher = cp.CssPatcher(css_vars={
-                            "--primary": "#FF0000"}, selector_overrides={}, patch_direct=False, debug_export_dir=None)
+    css_data = CollectedCss.from_overrides(
+        global_vars={"--primary": "#FF0000"},
+        global_selectors={},
+    )
+    patcher = cp.CssPatcher(
+        css_data,
+        patch_direct=False,
+        debug_export_dir=None,
+    )
     patcher.patch_bundle_file(tmp_path / "fm_base.bundle", out_dir)
 
     # Verify color was patched to red
@@ -124,8 +131,16 @@ def test_selector_override_patch(tmp_path: Path):
     set_unitypy_in_module(cp, env)
 
     out_dir = tmp_path / "out2"
-    patcher = cp.CssPatcher(css_vars={}, selector_overrides={(
-        ".green", "color"): "#00FF00"}, patch_direct=False, debug_export_dir=None)
+    css_data = CollectedCss.from_overrides(
+        global_vars={},
+        global_selectors={(".green", "color"): "#00FF00",
+                          ("green", "color"): "#00FF00"},
+    )
+    patcher = cp.CssPatcher(
+        css_data,
+        patch_direct=False,
+        debug_export_dir=None,
+    )
     patcher.patch_bundle_file(tmp_path / "ui.bundle", out_dir)
 
     # Verify color patched to green
@@ -150,9 +165,15 @@ def test_selector_override_converts_string_handles(tmp_path: Path):
 
     out_dir = tmp_path / "out_selector_strings"
     target_hex = "#81848D"
+    css_data = CollectedCss.from_overrides(
+        global_vars={},
+        global_selectors={
+            (".attribute-colour-great", "color"): target_hex,
+            ("attribute-colour-great", "color"): target_hex,
+        },
+    )
     patcher = cp.CssPatcher(
-        css_vars={},
-        selector_overrides={(".attribute-colour-great", "color"): target_hex},
+        css_data,
         patch_direct=False,
         debug_export_dir=None,
     )
@@ -181,8 +202,15 @@ def test_patch_direct_literal(tmp_path: Path):
     from src.core import css_patcher as cp
     set_unitypy_in_module(cp, env)
     out_dir = tmp_path / "out3"
-    patcher = cp.CssPatcher(css_vars={"--foo-color": "#112233"},
-                            selector_overrides={}, patch_direct=True, debug_export_dir=None)
+    css_data = CollectedCss.from_overrides(
+        global_vars={"--foo-color": "#112233"},
+        global_selectors={},
+    )
+    patcher = cp.CssPatcher(
+        css_data,
+        patch_direct=True,
+        debug_export_dir=None,
+    )
     patcher.patch_bundle_file(tmp_path / "ui.bundle", out_dir)
 
     # Verify color patched to #112233
@@ -204,8 +232,15 @@ def test_debug_export_writes_files(tmp_path: Path):
     set_unitypy_in_module(cp, env)
     out_dir = tmp_path / "out4"
     debug_dir = out_dir / "debug_uss"
-    patcher = cp.CssPatcher(css_vars={"--primary": "#0000FF"}, selector_overrides={
-    }, patch_direct=False, debug_export_dir=debug_dir)
+    css_data = CollectedCss.from_overrides(
+        global_vars={"--primary": "#0000FF"},
+        global_selectors={},
+    )
+    patcher = cp.CssPatcher(
+        css_data,
+        patch_direct=False,
+        debug_export_dir=debug_dir,
+    )
     patcher.patch_bundle_file(tmp_path / "ui.bundle", out_dir)
 
     files = {p.name for p in debug_dir.iterdir()}
@@ -225,8 +260,15 @@ def test_root_level_variable_applies_when_strings_names_var(tmp_path: Path):
     set_unitypy_in_module(cp, env)
 
     out_dir = tmp_path / "out_root"
-    patcher = cp.CssPatcher(css_vars={"--root-accent": "#00FFFF"},
-                            selector_overrides={}, patch_direct=False, debug_export_dir=None)
+    css_data = CollectedCss.from_overrides(
+        global_vars={"--root-accent": "#00FFFF"},
+        global_selectors={},
+    )
+    patcher = cp.CssPatcher(
+        css_data,
+        patch_direct=False,
+        debug_export_dir=None,
+    )
     patcher.patch_bundle_file(tmp_path / "ui.bundle", out_dir)
 
     # Verify color was patched to #00FFFF
@@ -247,8 +289,15 @@ def test_root_level_literal_variable_updates(tmp_path: Path):
 
     out_dir = tmp_path / "out_literal"
     target = "#CC0714"
-    patcher = cp.CssPatcher(css_vars={"--literal-accent": target},
-                            selector_overrides={}, patch_direct=False, debug_export_dir=None)
+    css_data = CollectedCss.from_overrides(
+        global_vars={"--literal-accent": target},
+        global_selectors={},
+    )
+    patcher = cp.CssPatcher(
+        css_data,
+        patch_direct=False,
+        debug_export_dir=None,
+    )
     patcher.patch_bundle_file(tmp_path / "ui.bundle", out_dir)
 
     R, G, B, A = hex_to_rgba(target)
@@ -271,8 +320,15 @@ def test_variable_reference_converted_to_literal_color(tmp_path: Path):
 
     out_dir = tmp_path / "out_var_literal"
     hex_colour = "#050B14"
-    patcher = cp.CssPatcher(css_vars={"--global-text-primary": hex_colour},
-                            selector_overrides={}, patch_direct=False, debug_export_dir=None)
+    css_data = CollectedCss.from_overrides(
+        global_vars={"--global-text-primary": hex_colour},
+        global_selectors={},
+    )
+    patcher = cp.CssPatcher(
+        css_data,
+        patch_direct=False,
+        debug_export_dir=None,
+    )
     patcher.patch_bundle_file(tmp_path / "ui.bundle", out_dir)
 
     # A new color entry should have been appended and the property converted to a literal color handle

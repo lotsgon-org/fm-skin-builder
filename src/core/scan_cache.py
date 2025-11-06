@@ -6,6 +6,7 @@ from typing import Any, Dict, Optional, Set, Tuple
 
 from .logger import get_logger
 from .cache import cache_dir
+from .css_sources import CollectedCss
 
 log = get_logger(__name__)
 
@@ -93,8 +94,7 @@ def load_or_refresh_candidates(
     bundle: Path,
     *,
     refresh: bool,
-    css_vars: Dict[str, str],
-    selector_overrides: Dict[Tuple[str, str], str],
+    css_data: CollectedCss,
     patch_direct: bool,
 ) -> Optional[Set[str]]:
     index: Optional[Dict[str, Any]] = None
@@ -110,14 +110,29 @@ def load_or_refresh_candidates(
     var_map = index.get("var_map", {})
     sel_map = index.get("selector_map", {})
 
-    for var in css_vars.keys():
+    var_names: Set[str] = set(css_data.global_vars.keys())
+    selector_keys: Set[Tuple[str, str]] = set(
+        css_data.global_selectors.keys()
+    )
+
+    for overrides_list in css_data.asset_map.values():
+        for overrides in overrides_list:
+            var_names.update(overrides.vars.keys())
+            selector_keys.update(overrides.selectors.keys())
+
+    for overrides_list in css_data.files_by_stem.values():
+        for overrides in overrides_list:
+            var_names.update(overrides.vars.keys())
+            selector_keys.update(overrides.selectors.keys())
+
+    for var in var_names:
         if var in var_map:
             for hit in var_map[var]:
                 asset = hit.get("asset")
                 if asset:
                     candidates.add(asset)
 
-    for (selector, prop), _hex in selector_overrides.items():
+    for selector, prop in selector_keys:
         keys = [selector, selector.lstrip(".")]
         for sel in keys:
             props = sel_map.get(sel)

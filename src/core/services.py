@@ -2,10 +2,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, Optional, Sequence, Set, Tuple, TYPE_CHECKING
+from typing import Optional, Sequence, Set, Tuple, TYPE_CHECKING
 
 from .context import BundleContext, PatchReport
 from .textures import swap_textures, TextureSwapResult
+from .css_sources import CollectedCss
 
 if TYPE_CHECKING:  # pragma: no cover - circular import safe typing
     from .css_patcher import CssPatcher
@@ -25,12 +26,10 @@ class CssPatchService:
 
     def __init__(
         self,
-        css_vars: Dict[str, str],
-        selector_overrides: Dict[Tuple[str, str], str],
+        css_data: CollectedCss,
         options: CssPatchOptions,
     ) -> None:
-        self._css_vars = css_vars
-        self._selector_overrides = selector_overrides
+        self._css_data = css_data
         self._options = options
         self._patcher: Optional["CssPatcher"] = None
 
@@ -48,8 +47,7 @@ class CssPatchService:
             from .css_patcher import CssPatcher  # local import to avoid cycle
 
             self._patcher = CssPatcher(
-                self._css_vars,
-                self._selector_overrides,
+                self._css_data,
                 patch_direct=self._options.patch_direct,
                 debug_export_dir=self._options.debug_export_dir,
                 dry_run=self._options.dry_run,

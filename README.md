@@ -29,11 +29,12 @@ Use `python -m src.cli.main <command> --help` for CLI reference.
 2. Run the patch command:
 
 ```bash
-python -m src.cli.main patch skins/your_skin --out build/skins
+python -m src.cli.main patch skins/your_skin
 ```
 
 - Without `--bundle`, the CLI infers bundles from `config.json` or installed FM paths.
 - Point `--bundle` at a specific `.bundle` file or a directory of bundles to override auto-discovery.
+- Omit `--out` to write patched bundles back into `<skin>/packages`; pass `--out <dir>` to use a custom destination.
 
 Common flags:
 
@@ -46,9 +47,15 @@ Common flags:
 
 Patching output:
 
-- Modified bundles are written to `--out` with an `_modified.bundle` suffix.
+- Modified bundles keep their original filenames and are written to the chosen output directory (default: `<skin>/packages`).
 - Texture swaps (icons/backgrounds) reuse the same out directory and report counts in the CLI summary.
 - Dry runs leave the filesystem untouched but emit `Summary:` lines per bundle.
+
+Per-stylesheet overrides:
+
+- Place a `mapping.json` next to your CSS (either in the skin root or `colours/`) to target specific Unity stylesheets.
+- Each key corresponds to a CSS file name (with or without extension, relative paths also work). The value lists stylesheet asset names to receive that file's variables/selectors.
+- Files without an explicit mapping still apply globally, but the patcher now also falls back to matching assets by CSS filename stem, letting `fm_colours.uss` preferentially apply to `FMColours`.
 
 ## Scan Workflow
 

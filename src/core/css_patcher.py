@@ -42,7 +42,7 @@ from .scan_cache import (
     load_or_refresh_candidates as _load_or_refresh_scan_cache,
     load_cached_bundle_index,
 )
-from .css_sources import collect_css_from_dir, load_targeting_hints
+from .css_sources import CollectedCss, collect_css_from_dir, load_targeting_hints
 from .bundle_paths import infer_bundle_files
 
 log = get_logger(__name__)
@@ -79,16 +79,14 @@ def _build_unity_color(colors: Iterable[Any], r: float, g: float, b: float, a: f
 class CssPatcher:
     def __init__(
         self,
-        css_vars: Dict[str, str],
-        selector_overrides: Dict[Tuple[str, str], str],
+        css_data: CollectedCss,
         patch_direct: bool = False,
         debug_export_dir: Optional[Path] = None,
         dry_run: bool = False,
         selectors_filter: Optional[Set[str]] = None,
         selector_props_filter: Optional[Set[Tuple[str, str]]] = None,
     ) -> None:
-        self.css_vars = css_vars
-        self.selector_overrides = selector_overrides
+        self.css_data = css_data
         self.patch_direct = patch_direct
         self.debug_export_dir = debug_export_dir
         self.dry_run = dry_run
@@ -142,7 +140,9 @@ class CssPatcher:
 
         log.info(f"🔍 Scanning bundle: {bundle_name}")
 
-        original_uss: List[Tuple[Any, Any, str]] = []
+        original_uss: List[
+            Tuple[Any, Any, str, Dict[str, str], Dict[Tuple[str, str], str]]
+        ] = []
         for obj in env.objects:
             if obj.type.name != "MonoBehaviour":
                 continue
@@ -152,15 +152,40 @@ class CssPatcher:
             name = getattr(data, "m_Name", "UnnamedStyleSheet")
             if candidate_assets is not None and name not in candidate_assets:
                 continue
-            will_patch = self._will_patch(data)
+            css_vars_for_asset, selector_overrides_for_asset = self._effective_overrides(
+                name)
+            will_patch = self._will_patch(
+                data,
+                css_vars_for_asset,
+                selector_overrides_for_asset,
+            )
             if self.debug_export_dir and will_patch and not self.dry_run:
                 self.debug_export_dir.mkdir(parents=True, exist_ok=True)
                 self._export_debug_original(name, data)
-            original_uss.append((obj, data, name))
+            original_uss.append(
+                (
+                    obj,
+                    data,
+                    name,
+                    css_vars_for_asset,
+                    selector_overrides_for_asset,
+                )
+            )
 
-        for obj, data, name in original_uss:
+        for (
+            obj,
+            data,
+            name,
+            css_vars_for_asset,
+            selector_overrides_for_asset,
+        ) in original_uss:
             found_styles += 1
-            pv, pd, changed = self._apply_patches_to_stylesheet(name, data)
+            pv, pd, changed = self._apply_patches_to_stylesheet(
+                name,
+                data,
+                css_vars_for_asset,
+                selector_overrides_for_asset,
+            )
             patched_vars += pv
             patched_direct += pd
             if changed:
@@ -235,7 +260,40 @@ class CssPatcher:
     # internals
     # -----------------------------
 
-    def _will_patch(self, data) -> bool:
+    def _effective_overrides(
+        self,
+        stylesheet_name: str,
+    ) -> Tuple[Dict[str, str], Dict[Tuple[str, str], str]]:
+        vars_combined: Dict[str, str] = dict(self.css_data.global_vars)
+        selectors_combined: Dict[Tuple[str, str], str] = dict(
+            self.css_data.global_selectors
+        )
+
+        key = stylesheet_name.lower()
+        seen_sources: Set[int] = set()
+
+        if key in self.css_data.asset_map:
+            for overrides in self.css_data.asset_map[key]:
+                seen_sources.add(id(overrides))
+                vars_combined.update(overrides.vars)
+                selectors_combined.update(overrides.selectors)
+
+        if key in self.css_data.files_by_stem:
+            for overrides in self.css_data.files_by_stem[key]:
+                ident = id(overrides)
+                if ident in seen_sources:
+                    continue
+                vars_combined.update(overrides.vars)
+                selectors_combined.update(overrides.selectors)
+
+        return vars_combined, selectors_combined
+
+    def _will_patch(
+        self,
+        data,
+        css_vars: Dict[str, str],
+        selector_overrides: Dict[Tuple[str, str], str],
+    ) -> bool:
         # Check var-based direct property patches
         for rule in getattr(data, "m_Rules", []):
             for prop in getattr(rule, "m_Properties", []):
@@ -247,13 +305,13 @@ class CssPatcher:
                     prop_candidates = [prop_name, prop_name.lstrip(
                         "-"), "--" + prop_name.lstrip("-")]
                 match_key = next(
-                    (k for k in prop_candidates if k in self.css_vars), None)
+                    (k for k in prop_candidates if k in css_vars), None)
                 if match_key:
                     for val in getattr(prop, "m_Values", []):
                         if getattr(val, "m_ValueType", None) == 4:
                             value_index = getattr(val, "valueIndex", None)
                             if value_index is not None and 0 <= value_index < len(getattr(data, "colors", [])):
-                                hex_val = self.css_vars[match_key]
+                                hex_val = css_vars[match_key]
                                 r, g, b, a = hex_to_rgba(hex_val)
                                 col = data.colors[value_index]
                                 if (col.r, col.g, col.b, col.a) != (r, g, b, a):
@@ -268,7 +326,7 @@ class CssPatcher:
                 candidates = [prop_name, prop_name.lstrip(
                     "-"), "--" + prop_name.lstrip("-")]
                 match_key = next(
-                    (k for k in candidates if k in self.css_vars), None)
+                    (k for k in candidates if k in css_vars), None)
                 if not match_key:
                     continue
                 has_literal_color = any(
@@ -285,7 +343,7 @@ class CssPatcher:
             if color_idx >= len(strings):
                 continue
             var_name = strings[color_idx]
-            if var_name not in self.css_vars:
+            if var_name not in css_vars:
                 continue
             found = False
             for rule in rules:
@@ -306,7 +364,7 @@ class CssPatcher:
                     break
             if found:
                 # Only consider a change if the target differs from current color
-                target = self.css_vars.get(var_name)
+                target = css_vars.get(var_name)
                 if target:
                     tr, tg, tb, ta = hex_to_rgba(target)
                     col = colors[color_idx]
@@ -326,8 +384,8 @@ class CssPatcher:
             candidates = [var_name, ("--" + var_name.lstrip("-"))]
             found_val = None
             for cand in candidates:
-                if cand in self.css_vars:
-                    found_val = self.css_vars[cand]
+                if cand in css_vars:
+                    found_val = css_vars[cand]
                     break
             if not found_val:
                 continue
@@ -346,7 +404,7 @@ class CssPatcher:
                             if value_index is not None and 0 <= value_index < len(getattr(data, "colors", [])):
                                 prop_name = getattr(prop, "m_Name", "")
                                 css_match = next(
-                                    (self.css_vars[k] for k in self.css_vars if k.endswith(prop_name)), None)
+                                    (css_vars[k] for k in css_vars if k.endswith(prop_name)), None)
                                 if css_match:
                                     r, g, b, a = hex_to_rgba(css_match)
                                     col = data.colors[value_index]
@@ -384,9 +442,9 @@ class CssPatcher:
                         if not allowed:
                             continue
 
-                    if (selector_text, prop_name) in self.selector_overrides or (
+                    if (selector_text, prop_name) in selector_overrides or (
                         selector_text.lstrip("."), prop_name
-                    ) in self.selector_overrides:
+                    ) in selector_overrides:
                         for val in getattr(prop, "m_Values", []):
                             if getattr(val, "m_ValueType", None) == 4:
                                 value_index = getattr(val, "valueIndex", None)
@@ -394,7 +452,13 @@ class CssPatcher:
                                     return True
         return False
 
-    def _apply_patches_to_stylesheet(self, name: str, data) -> Tuple[int, int, bool]:
+    def _apply_patches_to_stylesheet(
+        self,
+        name: str,
+        data,
+        css_vars: Dict[str, str],
+        selector_overrides: Dict[Tuple[str, str], str],
+    ) -> Tuple[int, int, bool]:
         patched_vars = 0
         patched_direct = 0
         changed = False
@@ -416,13 +480,13 @@ class CssPatcher:
                     candidates = [prop_name, prop_name.lstrip(
                         "-"), "--" + prop_name.lstrip("-")]
                     match_key = next(
-                        (k for k in candidates if k in self.css_vars), None)
+                        (k for k in candidates if k in css_vars), None)
                 if match_key:
                     for val in getattr(prop, "m_Values", []):
                         if getattr(val, "m_ValueType", None) == 4:
                             value_index = getattr(val, "valueIndex", None)
                             if value_index is not None and 0 <= value_index < len(colors):
-                                hex_val = self.css_vars[match_key]
+                                hex_val = css_vars[match_key]
                                 r, g, b, a = hex_to_rgba(hex_val)
                                 col = colors[value_index]
                                 if (col.r, col.g, col.b, col.a) != (r, g, b, a):
@@ -446,7 +510,7 @@ class CssPatcher:
                 candidates = [prop_name, prop_name.lstrip(
                     "-"), "--" + prop_name.lstrip("-")]
                 match_key = next(
-                    (k for k in candidates if k in self.css_vars), None)
+                    (k for k in candidates if k in css_vars), None)
                 if not match_key:
                     continue
                 values = list(getattr(prop, "m_Values", []))
@@ -455,7 +519,7 @@ class CssPatcher:
                 if has_literal_color or not values:
                     continue
 
-                hex_val = self.css_vars[match_key]
+                hex_val = css_vars[match_key]
                 r, g, b, a = hex_to_rgba(hex_val)
                 new_color = _build_unity_color(colors, r, g, b, a)
                 colors.append(new_color)
@@ -484,7 +548,7 @@ class CssPatcher:
             if color_idx >= len(strings):
                 continue
             var_name = strings[color_idx]
-            if var_name not in self.css_vars:
+            if var_name not in css_vars:
                 continue
             found = False
             for rule in rules:
@@ -506,10 +570,10 @@ class CssPatcher:
             if found:
                 color_indices_to_patch[color_idx] = var_name
                 log.info(
-                    f"  [WILL PATCH] {name}: {var_name} (color index {color_idx}) → {self.css_vars[var_name]}")
+                    f"  [WILL PATCH] {name}: {var_name} (color index {color_idx}) → {css_vars[var_name]}")
 
         for color_idx, var_name in color_indices_to_patch.items():
-            hex_val = self.css_vars.get(var_name)
+            hex_val = css_vars.get(var_name)
             if not hex_val:
                 continue
             r, g, b, a = hex_to_rgba(hex_val)
@@ -531,7 +595,7 @@ class CssPatcher:
                         if value_type == 4 and 0 <= value_index < len(colors):
                             prop_name = getattr(prop, "m_Name", "")
                             css_match = next(
-                                (self.css_vars[k] for k in self.css_vars if k.endswith(prop_name)), None)
+                                (css_vars[k] for k in css_vars if k.endswith(prop_name)), None)
                             if css_match:
                                 r, g, b, a = hex_to_rgba(css_match)
                                 col = colors[value_index]
@@ -569,8 +633,8 @@ class CssPatcher:
                             sel_only = key[0]
                             if sel_only not in self.selectors_filter and sel_only.lstrip(".") not in self.selectors_filter:
                                 continue
-                        if key in self.selector_overrides:
-                            hex_val = self.selector_overrides[key]
+                        if key in selector_overrides:
+                            hex_val = selector_overrides[key]
                             log.info(
                                 f"  [DEBUG] Selector/property match: {key} in {name}, patching to {hex_val}"
                             )
@@ -795,7 +859,7 @@ class SkinPatchPipeline:
         self.options = options
 
     def run(self, bundle: Optional[Path] = None) -> PipelineResult:
-        css_vars, selector_overrides = collect_css_from_dir(self.css_dir)
+        css_data = collect_css_from_dir(self.css_dir)
         cfg_model = None
         cfg_path = self.css_dir / "config.json"
         if cfg_path.exists():
@@ -810,8 +874,7 @@ class SkinPatchPipeline:
         debug_dir = (self.out_dir /
                      "debug_uss") if self.options.debug_export else None
         css_service = CssPatchService(
-            css_vars,
-            selector_overrides,
+            css_data,
             CssPatchOptions(
                 patch_direct=self.options.patch_direct,
                 debug_export_dir=debug_dir,
@@ -852,8 +915,7 @@ class SkinPatchPipeline:
                         self.css_dir,
                         b,
                         refresh=self.options.refresh_scan_cache,
-                        css_vars=css_vars,
-                        selector_overrides=selector_overrides,
+                        css_data=css_data,
                         patch_direct=self.options.patch_direct,
                     )
                     cache_candidates[b] = cand
