@@ -2,11 +2,17 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Tuple, Any, Set
+from types import SimpleNamespace
 import re
 import json
 import os
 import shutil
 import UnityPy
+
+try:
+    from UnityPy.classes.math import ColorRGBA as UnityColorRGBA
+except Exception:  # pragma: no cover - UnityPy may not expose ColorRGBA in tests
+    UnityColorRGBA = None
 
 from .logger import get_logger
 import gc
@@ -43,6 +49,31 @@ log = get_logger(__name__)
 # -----------------------------
 # Core patcher
 # -----------------------------
+
+
+def _build_unity_color(colors: Iterable[Any], r: float, g: float, b: float, a: float) -> Any:
+    """Create a Unity-compatible color instance, falling back to simple namespaces for tests."""
+    if UnityColorRGBA is not None:
+        try:
+            return UnityColorRGBA(r, g, b, a)
+        except Exception:
+            pass
+
+    sample = next(iter(colors), None)
+    if sample is not None:
+        cls = type(sample)
+        try:
+            return cls(r, g, b, a)  # type: ignore[call-arg]
+        except Exception:
+            instance = cls()  # type: ignore[call-arg]
+            for attr, value in ("r", r), ("g", g), ("b", b), ("a", a):
+                setattr(instance, attr, value)
+            return instance
+
+    # Fallback for empty color arrays in unit tests
+    color = SimpleNamespace()
+    color.r, color.g, color.b, color.a = r, g, b, a
+    return color
 
 
 class CssPatcher:
@@ -209,16 +240,42 @@ class CssPatcher:
         for rule in getattr(data, "m_Rules", []):
             for prop in getattr(rule, "m_Properties", []):
                 prop_name = getattr(prop, "m_Name", None)
-                if prop_name in self.css_vars:
+                # Be permissive: try raw, stripped, and prefixed forms so
+                # bundle property names that differ by leading dashes still match
+                prop_candidates = []
+                if prop_name is not None:
+                    prop_candidates = [prop_name, prop_name.lstrip(
+                        "-"), "--" + prop_name.lstrip("-")]
+                match_key = next(
+                    (k for k in prop_candidates if k in self.css_vars), None)
+                if match_key:
                     for val in getattr(prop, "m_Values", []):
                         if getattr(val, "m_ValueType", None) == 4:
                             value_index = getattr(val, "valueIndex", None)
                             if value_index is not None and 0 <= value_index < len(getattr(data, "colors", [])):
-                                hex_val = self.css_vars[prop_name]
+                                hex_val = self.css_vars[match_key]
                                 r, g, b, a = hex_to_rgba(hex_val)
                                 col = data.colors[value_index]
                                 if (col.r, col.g, col.b, col.a) != (r, g, b, a):
                                     return True
+
+        # Check for root-level variables that currently reference other tokens (no literal color yet)
+        for rule in getattr(data, "m_Rules", []):
+            for prop in getattr(rule, "m_Properties", []):
+                prop_name = getattr(prop, "m_Name", None)
+                if not prop_name:
+                    continue
+                candidates = [prop_name, prop_name.lstrip(
+                    "-"), "--" + prop_name.lstrip("-")]
+                match_key = next(
+                    (k for k in candidates if k in self.css_vars), None)
+                if not match_key:
+                    continue
+                has_literal_color = any(
+                    getattr(val, "m_ValueType", None) == 4 for val in getattr(prop, "m_Values", [])
+                )
+                if not has_literal_color:
+                    return True
 
         # Check strict CSS variable mapping: both string (type 3/10) and color (type 4) on same index
         colors = getattr(data, "colors", [])
@@ -255,6 +312,29 @@ class CssPatcher:
                     col = colors[color_idx]
                     if (col.r, col.g, col.b, col.a) != (tr, tg, tb, ta):
                         return True
+
+        # Additional: consider root-level variable definitions where the strings array
+        # names a CSS variable but there is no property that explicitly contains
+        # both the string and a color value at that index. In those cases we still
+        # want to patch the color entry itself so variable references elsewhere
+        # pick up the new colour.
+        for color_idx in range(len(colors)):
+            if color_idx >= len(strings):
+                continue
+            var_name = strings[color_idx]
+            # Try both raw and leading-dash-normalised forms
+            candidates = [var_name, ("--" + var_name.lstrip("-"))]
+            found_val = None
+            for cand in candidates:
+                if cand in self.css_vars:
+                    found_val = self.css_vars[cand]
+                    break
+            if not found_val:
+                continue
+            tr, tg, tb, ta = hex_to_rgba(found_val)
+            col = colors[color_idx]
+            if (col.r, col.g, col.b, col.a) != (tr, tg, tb, ta):
+                return True
 
         # Check direct literal patch
         if self.patch_direct and hasattr(data, "m_Rules"):
@@ -330,12 +410,19 @@ class CssPatcher:
         for rule in rules:
             for prop in getattr(rule, "m_Properties", []):
                 prop_name = getattr(prop, "m_Name", None)
-                if prop_name in self.css_vars:
+                # Normalize prop name variants to be permissive when matching keys
+                match_key = None
+                if prop_name is not None:
+                    candidates = [prop_name, prop_name.lstrip(
+                        "-"), "--" + prop_name.lstrip("-")]
+                    match_key = next(
+                        (k for k in candidates if k in self.css_vars), None)
+                if match_key:
                     for val in getattr(prop, "m_Values", []):
                         if getattr(val, "m_ValueType", None) == 4:
                             value_index = getattr(val, "valueIndex", None)
                             if value_index is not None and 0 <= value_index < len(colors):
-                                hex_val = self.css_vars[prop_name]
+                                hex_val = self.css_vars[match_key]
                                 r, g, b, a = hex_to_rgba(hex_val)
                                 col = colors[value_index]
                                 if (col.r, col.g, col.b, col.a) != (r, g, b, a):
@@ -344,9 +431,49 @@ class CssPatcher:
                                     direct_property_patched_indices.add(
                                         value_index)
                                     log.info(
-                                        f"  [PATCHED - direct property] {name}: {prop_name} (color index {value_index}) → {hex_val}"
+                                        f"  [PATCHED - direct property] {name}: {match_key} (color index {value_index}) → {hex_val}"
                                     )
                                     changed = True
+
+        # If a root-level variable only references other tokens (e.g. var(--foo)) and the user
+        # supplies a color override, convert that definition into a literal color so the new
+        # value survives in the bundle even without updating the referenced token.
+        for rule in rules:
+            for prop in getattr(rule, "m_Properties", []):
+                prop_name = getattr(prop, "m_Name", None)
+                if prop_name is None:
+                    continue
+                candidates = [prop_name, prop_name.lstrip(
+                    "-"), "--" + prop_name.lstrip("-")]
+                match_key = next(
+                    (k for k in candidates if k in self.css_vars), None)
+                if not match_key:
+                    continue
+                values = list(getattr(prop, "m_Values", []))
+                has_literal_color = any(
+                    getattr(val, "m_ValueType", None) == 4 for val in values)
+                if has_literal_color or not values:
+                    continue
+
+                hex_val = self.css_vars[match_key]
+                r, g, b, a = hex_to_rgba(hex_val)
+                new_color = _build_unity_color(colors, r, g, b, a)
+                colors.append(new_color)
+                new_index = len(colors) - 1
+
+                handle = next(
+                    (val for val in values if getattr(val, "m_ValueType", None) in {3, 8, 10}),
+                    values[0],
+                )
+                setattr(handle, "m_ValueType", 4)
+                setattr(handle, "valueIndex", new_index)
+
+                patched_vars += 1
+                direct_property_patched_indices.add(new_index)
+                changed = True
+                log.info(
+                    f"  [PATCHED - var literal] {name}: {match_key} (new color index {new_index}) → {hex_val}"
+                )
 
         # Strict CSS variable patching
         color_indices_to_patch: Dict[int, str] = {}
