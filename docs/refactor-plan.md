@@ -90,3 +90,26 @@
 1. Draft `BundleContext` and `PatchReport` APIs and gather feedback.
 2. Spike `CssPatchService` class refactor in a feature branch to validate ergonomics.
 3. Align CLI expectations with pipeline return values (success/failure codes, summary output).
+## Upcoming Priorities
+
+1. **Stabilise the pipeline contract**
+   - Add regression tests around `run_patch` covering inferred bundles, explicit bundle paths (file and directory), dry-run, debug export, and backup flows.
+   - Assert the new `PipelineResult` fields (counts, summary lines, dry-run metrics) so future changes cannot silently break the CLI surface.
+   - Smoke-test the CLI against representative skins to confirm real-world logging and backups still behave as expected.
+2. **Trim the mega-modules**
+   - Extract pure helpers from `src/core/css_patcher.py` into dedicated modules for parsing/selector utilities, scan-cache helpers, and pipeline orchestration.
+   - Apply the same treatment to `src/core/textures.py`, separating discovery/filter logic from mutation routines.
+   - As we carve pieces out, wrap them with unit tests to raise coverage incrementally.
+3. **Prepare richer front ends**
+   - On top of the refactored modules, design a progress callback/event interface that the pipeline can invoke per bundle/service step (sync first, async-ready later).
+   - Document requirements for a GUI/async adapter (progress phases, error handling, cancellation) before building the concrete implementation.
+4. **Optional follow-ups once the above is stable**
+   - Explore an optional JSON/structured output mode for the CLI to support automation.
+   - Revisit asynchronous execution when the progress contract is in place and the core modules are modular.
+
+## Packaging & Runtime Decisions (Nov 2025)
+
+- **Output layout**: mirror Football Manager’s structure under the user’s documents folder (e.g., `~/Documents/FM Skin Builder/skins/<skin>/packaged`). The generated bundles live inside `packaged/`; the schema and build tooling must ignore that directory when re-building a skin.
+- **Global cache**: move `.cache` into an app-data style location (platform specific) so cached indexes survive repository moves. Only indexes and metadata live here—per-skin packaged bundles remain in each skin’s `packaged/` directory.
+- **Bundle discovery**: auto-detect the FM26 StreamingAssets root per OS and use it as the default bundle source. Provide overrides plus tooling to clear/reset cache globally or per skin to handle game patches or user preference changes.
+- **Cache semantics**: caching records bundle fingerprints and asset listings, not binary payloads. This keeps cache useful when users tweak existing skins (e.g., recolour + icon change) without blocking them with stale contents; changes in upstream bundles invalidate the cache via fingerprint mismatch.
