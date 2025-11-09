@@ -1,6 +1,5 @@
 from pathlib import Path
 from types import SimpleNamespace
-import json
 import shutil
 import sys
 

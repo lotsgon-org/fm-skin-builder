@@ -144,7 +144,7 @@ def test_selector_override_patch(tmp_path: Path):
     patcher.patch_bundle_file(tmp_path / "ui.bundle", out_dir)
 
     # Verify color patched to green
-    r, g, b, a = colors[0].r, colors[0].g, colors[0].b, colors[0].a
+    r, g, b = colors[0].r, colors[0].g, colors[0].b
     assert (r, g, b) == (0.0, 1.0, 0.0)
 
 

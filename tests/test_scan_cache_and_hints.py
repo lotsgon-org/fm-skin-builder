@@ -1,7 +1,6 @@
 from pathlib import Path
 from types import SimpleNamespace
 import json
-import pytest
 
 from src.core.css_patcher import run_patch
 

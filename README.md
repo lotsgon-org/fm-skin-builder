@@ -5,8 +5,37 @@ CSS-first tooling for Football Manager bundles. Drop in CSS/USS overrides and th
 ## Prerequisites
 
 - Python 3.10+ (3.11 recommended)
-- `pip install -r requirements.txt`
 - Unity bundles extracted locally (or let the tool infer them from a Football Manager install)
+- Run `npm install` in the repo root after cloning—this triggers the bootstrap script which:
+  - provisions `.venv/` via `scripts/setup_python_env.sh` (or `scripts/setup_python_env.ps1` on Windows) pinned to Python 3.9.19 for UnityPy
+  - installs frontend dependencies (`frontend/node_modules`)
+  - wires Husky hooks
+- Subsequent `npm run tauri:*` and backend packaging steps automatically reuse the virtualenv.
+
+## Developer Setup
+
+1. **Clone & Bootstrap**
+   ```bash
+   git clone https://github.com/your-org/fm-skin-builder.git
+   cd fm-skin-builder
+   npm install
+   ```
+   This single command:
+   - Creates/updates `.venv/` with the pinned Python 3.9.19 interpreter and installs `requirements-dev.txt` (UnityPy, pytest, Ruff, PyInstaller, etc.).
+   - Runs `npm install` inside `frontend/` so Vite/Tailwind/React deps are present.
+   - Installs Husky hooks (pre-commit + commit-msg) to enforce lint and Conventional Commits.
+   - On Windows, a PowerShell dialog may ask for script permissions; run `Set-ExecutionPolicy Bypass -Scope Process -Force` beforehand if needed.
+
+2. **Daily Commands**
+   - `npm run tauri:dev` — launches Vite + the Tauri shell using the virtualenv-driven backend.
+   - `npm run tauri:dev-local` — same, but rebuilds the PyInstaller binary first.
+   - `npm run lint` — runs Ruff, Cargo fmt/clippy, and ESLint (also executed on every commit via Husky).
+   - `npm run test:frontend` / `pytest` — targeted test entry points.
+
+3. **Updating Tooling**
+   - After Python deps change, rerun `scripts/setup_python_env.sh` (or `.ps1`).
+   - After frontend deps change, rerun `npm install` in `frontend/` (bootstrapper detects missing `node_modules`).
+
 
 ## CLI Overview
 
@@ -74,6 +103,13 @@ python -m src.cli.main scan --bundle bundles --out build/scan --export-uss
 - Set `FM_HARD_EXIT=0` to disable the hard exit safeguard if you prefer normal interpreter shutdown.
 - The tool respects targeting hints (`hints.txt`) to limit patch scope—see `docs/recipes/targeting-hints.md`.
 - Texture name mappings (`assets/*/mapping.json`) steer the new texture prefilter and swap pipeline.
+- Desktop shell: from the repo root run `npm run tauri:dev` (or `npm run tauri:dev-local` to force a fresh PyInstaller build). The runner automatically ensures `.venv` exists and uses it to execute the CLI in dev/release.
+- Husky hooks run `npm run lint` on every commit and `commitlint` on message creation. Use `npm run lint:python`, `npm run lint:rust`, or `npm run lint:frontend` to troubleshoot failures locally.
+
+## Tooling & Hooks
+
+- Run `npm install` at the repo root to install Husky hooks. Pre-commit runs `ruff`, `cargo fmt/clippy`, and `eslint`; `commit-msg` enforces Conventional Commits.
+- `npm run lint:python`, `npm run lint:rust`, and `npm run lint:frontend` are available individually when iterating on failures.
 
 ## Documentation
 
