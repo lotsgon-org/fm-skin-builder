@@ -68,6 +68,7 @@ log_info "Building standalone executable with PyInstaller..."
     --collect-all UnityPy \
     --collect-all cairosvg \
     --collect-all svg.path \
+    --additional-hooks-dir="$ROOT_DIR/hooks" \
     "$ENTRY_POINT"
 
 # Verify build
