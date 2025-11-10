@@ -24,15 +24,30 @@ Cairo is a 2D graphics library that provides low-level rendering capabilities. W
    ```
 4. Copy the DLL to your Python installation:
    ```powershell
-   # In PowerShell (adjust Python path as needed)
-   Copy-Item C:\msys64\mingw64\bin\libcairo-2.dll $env:PYTHON_LOCATION\DLLs\
+   # In PowerShell - Get Python location
+   $pythonLocation = python -c "import sys; print(sys.prefix)"
+   $dllsDir = Join-Path $pythonLocation "DLLs"
 
-   # Also copy Cairo's dependencies
-   Copy-Item C:\msys64\mingw64\bin\libpng16-16.dll $env:PYTHON_LOCATION\DLLs\
-   Copy-Item C:\msys64\mingw64\bin\libfreetype-6.dll $env:PYTHON_LOCATION\DLLs\
-   Copy-Item C:\msys64\mingw64\bin\libfontconfig-1.dll $env:PYTHON_LOCATION\DLLs\
-   Copy-Item C:\msys64\mingw64\bin\libpixman-1-0.dll $env:PYTHON_LOCATION\DLLs\
-   Copy-Item C:\msys64\mingw64\bin\zlib1.dll $env:PYTHON_LOCATION\DLLs\
+   # Create DLLs directory if it doesn't exist
+   if (-not (Test-Path $dllsDir)) {
+     New-Item -Path $dllsDir -ItemType Directory -Force
+   }
+
+   # Copy Cairo
+   Copy-Item C:\msys64\mingw64\bin\libcairo-2.dll (Join-Path $dllsDir "libcairo-2.dll") -Force
+
+   # Copy Cairo's dependencies
+   Copy-Item C:\msys64\mingw64\bin\libpng16-16.dll $dllsDir -Force
+   Copy-Item C:\msys64\mingw64\bin\libfreetype-6.dll $dllsDir -Force
+   Copy-Item C:\msys64\mingw64\bin\libfontconfig-1.dll $dllsDir -Force
+   Copy-Item C:\msys64\mingw64\bin\libpixman-1-0.dll $dllsDir -Force
+   Copy-Item C:\msys64\mingw64\bin\zlib1.dll $dllsDir -Force
+   Copy-Item C:\msys64\mingw64\bin\libbz2-1.dll $dllsDir -Force
+   Copy-Item C:\msys64\mingw64\bin\libexpat-1.dll $dllsDir -Force
+   Copy-Item C:\msys64\mingw64\bin\libiconv-2.dll $dllsDir -Force
+   Copy-Item C:\msys64\mingw64\bin\libintl-8.dll $dllsDir -Force
+   Copy-Item C:\msys64\mingw64\bin\libglib-2.0-0.dll $dllsDir -Force
+   Copy-Item C:\msys64\mingw64\bin\libpcre2-8-0.dll $dllsDir -Force
    ```
 
 **Option 2: Install GTK3 Runtime**
