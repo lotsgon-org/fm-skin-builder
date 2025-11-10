@@ -5,7 +5,7 @@
   "version": "0.1.0",
   "build": {
     "beforeDevCommand": "npm run dev",
-    "beforeBuildCommand": "../scripts/build_backend.sh && npm run build",
+    "beforeBuildCommand": "npm run build",
     "devUrl": "http://localhost:5173",
     "frontendDist": "../dist"
   },
