@@ -21,7 +21,7 @@ log_warn() {
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DIST_DIR="$ROOT_DIR/frontend/src-tauri/resources/backend"
-ENTRY_POINT="$ROOT_DIR/fm_skin_builder/cli/main.py"
+ENTRY_POINT="$ROOT_DIR/fm_skin_builder/__main__.py"
 BINARY_NAME="fm_skin_builder"
 
 # Determine platform-specific binary extension

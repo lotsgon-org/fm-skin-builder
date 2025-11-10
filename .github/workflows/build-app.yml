@@ -87,7 +87,7 @@ jobs:
             --collect-all UnityPy \
             --collect-all cairosvg \
             --collect-all svg.path \
-            fm_skin_builder/cli/main.py
+            fm_skin_builder/__main__.py
 
           # Create resources directory
           mkdir -p frontend/src-tauri/resources/backend
