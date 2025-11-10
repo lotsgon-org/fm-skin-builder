@@ -72,9 +72,29 @@ if [ -z "$FM_VERSION" ]; then
     exit 1
 fi
 
+# Expand ~ to home directory
+BUNDLE_PATH="${BUNDLE_PATH/#\~/$HOME}"
+OUTPUT_PATH="${OUTPUT_PATH/#\~/$HOME}"
+
 # Convert to absolute paths
-BUNDLE_PATH=$(cd "$BUNDLE_PATH" && pwd)
+if [[ ! "$BUNDLE_PATH" = /* ]]; then
+    BUNDLE_PATH="$(pwd)/$BUNDLE_PATH"
+fi
+if [[ ! "$OUTPUT_PATH" = /* ]]; then
+    OUTPUT_PATH="$(pwd)/$OUTPUT_PATH"
+fi
+
+# Verify bundle path exists
+if [ ! -d "$BUNDLE_PATH" ]; then
+    echo "Error: Bundle path does not exist: $BUNDLE_PATH"
+    exit 1
+fi
+
+# Create output directory if it doesn't exist
 mkdir -p "$OUTPUT_PATH"
+
+# Resolve to canonical path (handles symlinks and normalizes path)
+BUNDLE_PATH=$(cd "$BUNDLE_PATH" && pwd)
 OUTPUT_PATH=$(cd "$OUTPUT_PATH" && pwd)
 
 echo "======================================"
