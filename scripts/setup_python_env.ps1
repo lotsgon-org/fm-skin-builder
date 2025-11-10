@@ -18,7 +18,7 @@ $PythonVersionFile = Join-Path $RootDir '.python-version'
 if (Test-Path $PythonVersionFile) {
     $PythonVersion = (Get-Content $PythonVersionFile -Raw).Trim()
 } else {
-    $PythonVersion = '3.9.19'
+    $PythonVersion = '3.10'
 }
 if ($env:PY_VERSION) {
     $PythonVersion = $env:PY_VERSION

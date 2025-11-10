@@ -7,7 +7,7 @@ CSS-first tooling for Football Manager bundles. Drop in CSS/USS overrides and th
 - Python 3.10+ (3.11 recommended)
 - Unity bundles extracted locally (or let the tool infer them from a Football Manager install)
 - Run `npm install` in the repo root after cloning—this triggers the bootstrap script which:
-  - provisions `.venv/` via `scripts/setup_python_env.sh` (or `scripts/setup_python_env.ps1` on Windows) pinned to Python 3.9.19 for UnityPy
+  - provisions `.venv/` via `scripts/setup_python_env.sh` (or `scripts/setup_python_env.ps1` on Windows) with Python 3.10+
   - installs frontend dependencies (`frontend/node_modules`)
   - wires Husky hooks
 - Subsequent `npm run tauri:*` and backend packaging steps automatically reuse the virtualenv.
@@ -21,7 +21,7 @@ CSS-first tooling for Football Manager bundles. Drop in CSS/USS overrides and th
    npm install
    ```
    This single command:
-   - Creates/updates `.venv/` with the pinned Python 3.9.19 interpreter and installs `requirements-dev.txt` (UnityPy, pytest, Ruff, PyInstaller, etc.).
+   - Creates/updates `.venv/` with Python 3.10+ interpreter and installs `requirements-dev.txt` (UnityPy, pytest, Ruff, PyInstaller, etc.).
    - Runs `npm install` inside `frontend/` so Vite/Tailwind/React deps are present.
    - Installs Husky hooks (pre-commit + commit-msg) to enforce lint and Conventional Commits.
    - On Windows, a PowerShell dialog may ask for script permissions; run `Set-ExecutionPolicy Bypass -Scope Process -Force` beforehand if needed.

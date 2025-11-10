@@ -18,7 +18,7 @@ This document describes how to build FM Skin Builder for all platforms and set u
 
 - **Node.js** 18 or higher ([download](https://nodejs.org/))
 - **Rust** latest stable ([install](https://rustup.rs/))
-- **Python** 3.9.19 ([download](https://www.python.org/downloads/))
+- **Python** 3.10 or higher (3.11+ recommended) ([download](https://www.python.org/downloads/))
 
 ### Platform-Specific Requirements
 
@@ -303,7 +303,7 @@ To prepare for this:
 
 **"Backend binary missing"**:
 - Run `./scripts/build_backend.sh` manually
-- Check that Python 3.9.19 is installed
+- Check that Python 3.10+ is installed
 - Verify all Python dependencies are installed
 
 **"failed to bundle project"**:
