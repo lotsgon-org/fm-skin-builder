@@ -64,7 +64,7 @@
         "displayLanguageSelector": false,
         "installerIcon": "icons/icon.ico",
         "installMode": "currentUser",
-        "languages": ["en-US"]
+        "languages": ["English"]
       }
     }
   }
