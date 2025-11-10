@@ -7,7 +7,7 @@ name = "fm-skin-builder"
 version = "0.1.0"
 description = "Football Manager 2026 Skin Builder (CLI + core + desktop shell)"
 authors = [{name="Tom Stone"}]
-requires-python = "==3.9.19"
+requires-python = ">=3.10"
 dependencies = [
     "click>=8.1.7",
     "rich>=13.7.1",

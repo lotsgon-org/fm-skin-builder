@@ -7,7 +7,7 @@ CSS-first tooling for Football Manager bundles. Drop in CSS/USS overrides and th
 - Python 3.10+ (3.11 recommended)
 - Unity bundles extracted locally (or let the tool infer them from a Football Manager install)
 - Run `npm install` in the repo root after cloning—this triggers the bootstrap script which:
-  - provisions `.venv/` via `scripts/setup_python_env.sh` (or `scripts/setup_python_env.ps1` on Windows) pinned to Python 3.9.19 for UnityPy
+  - provisions `.venv/` via `scripts/setup_python_env.sh` (or `scripts/setup_python_env.ps1` on Windows) with Python 3.10+
   - installs frontend dependencies (`frontend/node_modules`)
   - wires Husky hooks
 - Subsequent `npm run tauri:*` and backend packaging steps automatically reuse the virtualenv.
@@ -21,7 +21,7 @@ CSS-first tooling for Football Manager bundles. Drop in CSS/USS overrides and th
    npm install
    ```
    This single command:
-   - Creates/updates `.venv/` with the pinned Python 3.9.19 interpreter and installs `requirements-dev.txt` (UnityPy, pytest, Ruff, PyInstaller, etc.).
+   - Creates/updates `.venv/` with Python 3.10+ interpreter and installs `requirements-dev.txt` (UnityPy, pytest, Ruff, PyInstaller, etc.).
    - Runs `npm install` inside `frontend/` so Vite/Tailwind/React deps are present.
    - Installs Husky hooks (pre-commit + commit-msg) to enforce lint and Conventional Commits.
    - On Windows, a PowerShell dialog may ask for script permissions; run `Set-ExecutionPolicy Bypass -Scope Process -Force` beforehand if needed.
@@ -111,8 +111,36 @@ python -m fm_skin_builder.cli.main scan --bundle bundles --out build/scan --expo
 - Run `npm install` at the repo root to install Husky hooks. Pre-commit runs `ruff`, `cargo fmt/clippy`, and `eslint`; `commit-msg` enforces Conventional Commits.
 - `npm run lint:python`, `npm run lint:rust`, and `npm run lint:frontend` are available individually when iterating on failures.
 
+## Building & Distribution
+
+To build distributable application bundles for all platforms:
+
+```bash
+./scripts/build_local.sh
+```
+
+This creates standalone installers that bundle the Python backend—users don't need Python installed.
+
+Build artifacts are generated in `frontend/src-tauri/target/release/bundle/`:
+- **Linux**: AppImage and .deb packages
+- **macOS**: .dmg and .app bundles
+- **Windows**: NSIS installer (.exe) and MSI
+
+For detailed build instructions, code signing setup, and CI/CD configuration, see `docs/BUILD.md`.
+
+### Automated Builds
+
+GitHub Actions automatically builds for all platforms on every push to `main`. The workflow:
+- Builds on Ubuntu, macOS (Intel + ARM), and Windows
+- Runs all tests (Python + frontend)
+- Signs builds (when configured)
+- Uploads artifacts for download
+
+See `.github/workflows/build-app.yml` and `docs/BUILD.md` for details.
+
 ## Documentation
 
+- `docs/BUILD.md` — building and distributing the application
 - `docs/CLI_GUIDE.md` — step-by-step CLI usage and troubleshooting
 - `docs/README.md` — documentation index and quick start
 - `docs/SKIN_FORMAT.md` — skin layout and configuration schema
