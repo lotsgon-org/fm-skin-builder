@@ -1,6 +1,7 @@
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { ThemeProvider } from '@/components/theme-provider';
 
 const invokeMock = vi.fn();
 
@@ -11,7 +12,11 @@ vi.mock('@tauri-apps/api/core', () => ({
 async function renderApp() {
   const module = await import('./App');
   const App = module.default;
-  return render(<App />);
+  return render(
+    <ThemeProvider defaultTheme="dark" storageKey="fm-skin-builder-ui-theme-test">
+      <App />
+    </ThemeProvider>
+  );
 }
 
 describe('App shell', () => {
@@ -37,7 +42,7 @@ describe('App shell', () => {
 
     await waitFor(() => {
       expect(
-        screen.getByText(/Command failed: Error: Runtime missing/i)
+        screen.getByText(/✗ Command failed: Error: Runtime missing/i)
       ).toBeInTheDocument();
     });
   });
@@ -81,8 +86,10 @@ describe('App shell', () => {
       });
     });
 
-    expect(
-      screen.getByText(/Patched bundles successfully/i)
-    ).toBeInTheDocument();
+    await waitFor(() => {
+      expect(
+        screen.getByText(/Patched bundles successfully/i)
+      ).toBeInTheDocument();
+    });
   });
 });

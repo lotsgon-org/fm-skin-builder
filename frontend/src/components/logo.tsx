@@ -9,6 +9,8 @@ export function Logo({ className }: { className?: string }) {
   const isDark =
     theme === "dark" ||
     (theme === "system" &&
+      typeof window !== "undefined" &&
+      window.matchMedia &&
       window.matchMedia("(prefers-color-scheme: dark)").matches);
 
   const LogoComponent = isDark ? White : Black;
