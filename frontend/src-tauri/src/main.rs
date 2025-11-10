@@ -88,10 +88,11 @@ fn run_python_task(app_handle: AppHandle, config: TaskConfig) -> Result<CommandR
         cmd
     } else {
         // Determine binary name with correct extension
+        // Note: resources are bundled with their directory structure intact
         let binary_name = if cfg!(windows) {
-            "backend/fm_skin_builder.exe"
+            "resources/backend/fm_skin_builder.exe"
         } else {
-            "backend/fm_skin_builder"
+            "resources/backend/fm_skin_builder"
         };
 
         let backend_binary = app_handle
