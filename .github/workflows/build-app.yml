@@ -112,19 +112,34 @@ jobs:
             Copy-Item $cairoDll (Join-Path $dllsDir "libcairo-2.dll") -Force
             Write-Host "Cairo DLL installed successfully from MSYS2"
 
-            # Also copy dependent DLLs that Cairo needs
+            # Also copy all dependent DLLs that Cairo needs
             $dependencies = @(
+              # Image and graphics
               "libpng16-16.dll",
+              "libpixman-1-0.dll",
+              # Font libraries
               "libfreetype-6.dll",
               "libfontconfig-1.dll",
-              "libpixman-1-0.dll",
+              "libharfbuzz-0.dll",
+              "libgraphite2.dll",
+              # Compression
               "zlib1.dll",
               "libbz2-1.dll",
+              "libbrotlidec.dll",
+              "libbrotlicommon.dll",
+              # XML and text
               "libexpat-1.dll",
+              # Character encoding
               "libiconv-2.dll",
               "libintl-8.dll",
+              # GLib and deps
               "libglib-2.0-0.dll",
-              "libpcre2-8-0.dll"
+              "libpcre2-8-0.dll",
+              "libffi-8.dll",
+              # Runtime libraries
+              "libgcc_s_seh-1.dll",
+              "libstdc++-6.dll",
+              "libwinpthread-1.dll"
             )
 
             foreach ($dll in $dependencies) {
@@ -151,6 +166,7 @@ jobs:
             --collect-all cairosvg \
             --collect-all svg.path \
             --additional-hooks-dir=hooks \
+            --runtime-hook=hooks/rthook_cairocffi.py \
             fm_skin_builder/__main__.py
 
           # Create resources directory

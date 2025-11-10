@@ -69,6 +69,7 @@ log_info "Building standalone executable with PyInstaller..."
     --collect-all cairosvg \
     --collect-all svg.path \
     --additional-hooks-dir="$ROOT_DIR/hooks" \
+    --runtime-hook="$ROOT_DIR/hooks/rthook_cairocffi.py" \
     "$ENTRY_POINT"
 
 # Verify build
