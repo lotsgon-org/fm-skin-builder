@@ -4,12 +4,14 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# Install system dependencies including build tools for UnityPy
+# Install system dependencies including build tools for UnityPy and Cairo for cairosvg
 RUN apt-get update && apt-get install -y \
     git \
     build-essential \
     gcc \
     g++ \
+    libcairo2 \
+    libcairo2-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements and install Python dependencies
