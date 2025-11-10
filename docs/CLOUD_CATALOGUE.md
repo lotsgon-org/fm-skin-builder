@@ -89,11 +89,12 @@ In your GitHub repo → Settings → Secrets and variables → Actions:
 **Add Repository Secrets** (under "Secrets" tab):
 
 ```
-R2_ACCOUNT_ID  = your-account-id
-R2_API_KEY     = access_key_id:secret_access_key
+R2_ACCOUNT_ID        = your-account-id
+R2_ACCESS_KEY        = your-access-key-id
+R2_SECRET_ACCESS_KEY = your-secret-access-key
 ```
 
-> **Note**: Combine your Access Key ID and Secret Access Key with a colon (`:`) separator
+> **Note**: Use the Access Key ID and Secret Access Key exactly as shown in Cloudflare
 
 **Add Repository Variables** (under "Variables" tab):
 
@@ -118,7 +119,8 @@ Set environment variables:
 
 ```bash
 export R2_ACCOUNT_ID="your-account-id"
-export R2_API_KEY="access_key_id:secret_access_key"
+export R2_ACCESS_KEY_ID="your-access-key-id"
+export R2_SECRET_ACCESS_KEY="your-secret-access-key"
 export R2_BUNDLES_BUCKET="fm-bundles"  # optional, defaults to fm-bundles
 ```
 
