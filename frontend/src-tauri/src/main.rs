@@ -87,13 +87,27 @@ fn run_python_task(app_handle: AppHandle, config: TaskConfig) -> Result<CommandR
         cmd.env("PYTHONPATH", "fm_skin_builder");
         cmd
     } else {
+        // Determine binary name with correct extension
+        // Note: resources are bundled with their directory structure intact
+        let binary_name = if cfg!(windows) {
+            "resources/backend/fm_skin_builder.exe"
+        } else {
+            "resources/backend/fm_skin_builder"
+        };
+
         let backend_binary = app_handle
             .path()
-            .resolve("backend/fm_skin_builder", BaseDirectory::Resource)
-            .map_err(|error| format!("Failed to resolve backend binary: {error}"))?;
+            .resolve(binary_name, BaseDirectory::Resource)
+            .map_err(|error| format!("Failed to resolve backend binary path: {error}"))?;
+
         if !backend_binary.exists() {
-            return Err("Backend binary missing. Run scripts/build_backend.sh".to_string());
+            return Err(format!(
+                "Backend binary not found at: {}\nExpected binary name: {}",
+                backend_binary.display(),
+                binary_name
+            ));
         }
+
         Command::new(backend_binary)
     };
 

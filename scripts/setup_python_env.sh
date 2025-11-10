@@ -5,7 +5,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 if [[ -f "$ROOT_DIR/.python-version" ]]; then
   DEFAULT_PY_VERSION="$(tr -d '\r' < "$ROOT_DIR/.python-version")"
 else
-  DEFAULT_PY_VERSION="3.9.19"
+  DEFAULT_PY_VERSION="3.10"
 fi
 PY_VERSION="${PY_VERSION:-$DEFAULT_PY_VERSION}"
 PYTHON_BIN=""

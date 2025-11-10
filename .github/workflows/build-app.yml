@@ -1,0 +1,253 @@
+name: Build Application
+
+on:
+  push:
+    branches: [ main ]
+    tags: [ 'v*' ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+env:
+  PYTHON_VERSION: '3.10'
+
+jobs:
+  # Separate CI job for testing - runs in parallel, doesn't block builds
+  test:
+    name: Run Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install Python dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install pytest
+
+      - name: Run Python tests
+        run: pytest -v
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Run frontend tests
+        working-directory: frontend
+        run: npm test
+
+  # Build Python backend once and cache it
+  build-backend:
+    name: Build Backend - ${{ matrix.name }}
+    strategy:
+      matrix:
+        include:
+          - platform: ubuntu-latest
+            name: Linux
+          - platform: macos-15-intel
+            name: macOS
+          - platform: windows-latest
+            name: Windows
+
+    runs-on: ${{ matrix.platform }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt pyinstaller
+
+      - name: Build backend binary
+        shell: bash
+        run: |
+          python -m PyInstaller \
+            --onefile \
+            --name fm_skin_builder \
+            --hidden-import=PIL._tkinter_finder \
+            --collect-all UnityPy \
+            --collect-all cairosvg \
+            --collect-all svg.path \
+            fm_skin_builder/__main__.py
+
+          # Create resources directory
+          mkdir -p frontend/src-tauri/resources/backend
+
+          # Copy binary with correct extension
+          if [ "${{ matrix.platform }}" = "windows-latest" ]; then
+            cp dist/fm_skin_builder.exe frontend/src-tauri/resources/backend/
+          else
+            cp dist/fm_skin_builder frontend/src-tauri/resources/backend/
+            chmod +x frontend/src-tauri/resources/backend/fm_skin_builder
+          fi
+
+      - name: Upload backend artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-${{ matrix.name }}
+          path: frontend/src-tauri/resources/backend/
+          retention-days: 1
+
+  # Build Tauri applications
+  build:
+    name: Build ${{ matrix.settings.name }}
+    needs: build-backend
+    strategy:
+      fail-fast: false
+      matrix:
+        settings:
+          - platform: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            name: Linux x86_64
+            backend: Linux
+
+          - platform: windows-latest
+            target: x86_64-pc-windows-msvc
+            name: Windows x86_64
+            backend: Windows
+
+          - platform: macos-latest
+            target: aarch64-apple-darwin
+            name: macOS ARM64
+            backend: macOS
+
+          - platform: macos-15-intel
+            target: x86_64-apple-darwin
+            name: macOS Intel
+            backend: macOS
+
+    runs-on: ${{ matrix.settings.platform }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.settings.target }}
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: './frontend/src-tauri -> target'
+
+      - name: Install Linux dependencies
+        if: matrix.settings.platform == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf
+
+      - name: Download backend
+        uses: actions/download-artifact@v4
+        with:
+          name: backend-${{ matrix.settings.backend }}
+          path: frontend/src-tauri/resources/backend
+
+      - name: Make backend executable (Unix)
+        if: matrix.settings.platform != 'windows-latest'
+        run: chmod +x frontend/src-tauri/resources/backend/fm_skin_builder
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Setup Windows code signing
+        if: matrix.settings.platform == 'windows-latest' && github.event_name != 'pull_request'
+        shell: pwsh
+        run: |
+          if ("${{ secrets.WINDOWS_CERTIFICATE }}" -ne "") {
+            $CertBytes = [Convert]::FromBase64String("${{ secrets.WINDOWS_CERTIFICATE }}")
+            $CertPath = Join-Path $env:RUNNER_TEMP "cert.pfx"
+            [IO.File]::WriteAllBytes($CertPath, $CertBytes)
+            $Password = ConvertTo-SecureString "${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}" -AsPlainText -Force
+            Import-PfxCertificate -FilePath $CertPath -CertStoreLocation Cert:\CurrentUser\My -Password $Password
+            Write-Host "Certificate imported successfully"
+          } else {
+            Write-Host "No signing certificate configured"
+          }
+
+      - name: Build Tauri app
+        working-directory: frontend
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: npm run tauri build -- --target ${{ matrix.settings.target }}
+
+      - name: Prepare artifacts
+        shell: bash
+        run: |
+          mkdir -p artifacts
+
+          if [ "${{ matrix.settings.platform }}" = "ubuntu-latest" ]; then
+            find frontend/src-tauri/target/${{ matrix.settings.target }}/release/bundle -name "*.AppImage" -exec cp {} artifacts/ \; || true
+            find frontend/src-tauri/target/${{ matrix.settings.target }}/release/bundle -name "*.deb" -exec cp {} artifacts/ \; || true
+          elif [ "${{ matrix.settings.platform }}" = "windows-latest" ]; then
+            find frontend/src-tauri/target/${{ matrix.settings.target }}/release/bundle -name "*.exe" -exec cp {} artifacts/ \; || true
+            find frontend/src-tauri/target/${{ matrix.settings.target }}/release/bundle -name "*.msi" -exec cp {} artifacts/ \; || true
+          elif [[ "${{ matrix.settings.platform }}" == macos-* ]]; then
+            find frontend/src-tauri/target/${{ matrix.settings.target }}/release/bundle -name "*.dmg" -exec cp {} artifacts/ \; || true
+            find frontend/src-tauri/target/${{ matrix.settings.target }}/release/bundle -name "*.app" -exec cp -r {} artifacts/ \; || true
+          fi
+
+          ls -lah artifacts/ || echo "No artifacts found"
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: fm-skin-builder-${{ matrix.settings.target }}
+          path: artifacts/*
+          if-no-files-found: warn
+          retention-days: 30
+
+  # Create release on tags
+  release:
+    name: Create Release
+    needs: [test, build]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+          files: artifacts/**/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
