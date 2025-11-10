@@ -37,17 +37,15 @@ class TextureExtractor(BaseAssetExtractor):
             log.info(f"    Loading bundle: {bundle_path.name}")
             sys.stdout.flush()
             env = UnityPy.load(str(bundle_path))
-            log.info(f"    Bundle loaded successfully")
+            log.info("    Bundle loaded successfully")
             sys.stdout.flush()
         except Exception as e:
             # If we can't load the bundle, return empty list
             log.warning(f"    Failed to load bundle: {e}")
             return textures
 
-        bundle_name = bundle_path.name
-
         try:
-            log.info(f"    Iterating through objects...")
+            log.info("    Iterating through objects...")
             sys.stdout.flush()
 
             for obj in env.objects:
@@ -55,10 +53,10 @@ class TextureExtractor(BaseAssetExtractor):
                     continue
 
                 try:
-                    log.info(f"    Reading Texture2D object...")
+                    log.info("    Reading Texture2D object...")
                     sys.stdout.flush()
                     data = obj.read()
-                    log.info(f"    Object read successfully")
+                    log.info("    Object read successfully")
                     sys.stdout.flush()
                 except Exception as e:
                     log.warning(f"    Failed to read object: {e}")
@@ -79,7 +77,7 @@ class TextureExtractor(BaseAssetExtractor):
             # Clean up UnityPy environment
             try:
                 del env
-            except:
+            except Exception:
                 pass
             gc.collect()
 
@@ -102,7 +100,7 @@ class TextureExtractor(BaseAssetExtractor):
 
         bundle_name = bundle_path.name
 
-        log.info(f"    Getting asset name...")
+        log.info("    Getting asset name...")
         sys.stdout.flush()
         name = self._get_asset_name(texture_obj)
         log.info(f"    Asset name: {name}")
@@ -112,13 +110,13 @@ class TextureExtractor(BaseAssetExtractor):
             return None
 
         # Get dimensions
-        log.info(f"    Getting width...")
+        log.info("    Getting width...")
         sys.stdout.flush()
         width = getattr(texture_obj, "m_Width", 0)
         log.info(f"    Width: {width}")
         sys.stdout.flush()
 
-        log.info(f"    Getting height...")
+        log.info("    Getting height...")
         sys.stdout.flush()
         height = getattr(texture_obj, "m_Height", 0)
         log.info(f"    Height: {height}")
@@ -290,10 +288,10 @@ class TextureExtractor(BaseAssetExtractor):
                     result = queue.get_nowait()
                     if result[0] == 'success':
                         image_data = result[1]
-                        log.info(f"    Success! Image extracted via subprocess")
+                        log.info("    Success! Image extracted via subprocess")
                         sys.stdout.flush()
                     elif result[0] == 'notfound':
-                        log.warning(f"    Texture not found in subprocess reload")
+                        log.warning("    Texture not found in subprocess reload")
                         return {
                             "name": name,
                             "bundle": bundle_name,
@@ -331,7 +329,7 @@ class TextureExtractor(BaseAssetExtractor):
             else:
                 # Use UnityPy's built-in decoder (works fine on Linux)
                 image = texture_obj.image
-                log.info(f"    Image accessed successfully")
+                log.info("    Image accessed successfully")
                 sys.stdout.flush()
 
                 if image:
@@ -356,7 +354,7 @@ class TextureExtractor(BaseAssetExtractor):
                     # Clean up
                     del img_copy
                     del buf
-        except Exception as e:
+        except Exception:
             # Image extraction failed, continue without image data
             # Don't fail the entire extraction for one bad image
             pass
@@ -389,7 +387,6 @@ class TextureExtractor(BaseAssetExtractor):
         try:
             import texture2ddecoder
             from PIL import Image
-            import numpy as np
 
             # Debug: log available attributes
             attrs = [attr for attr in dir(texture_obj) if not attr.startswith('_')]
@@ -420,7 +417,7 @@ class TextureExtractor(BaseAssetExtractor):
                 log.debug(f"    Found get_image_data(): {type(raw_data)}, len={len(raw_data) if raw_data else 0}")
 
             if not raw_data:
-                log.warning(f"    No raw texture data available in any known property")
+                log.warning("    No raw texture data available in any known property")
                 return None
 
             # Decode based on format
@@ -439,7 +436,7 @@ class TextureExtractor(BaseAssetExtractor):
             return img
 
         except ImportError:
-            log.warning(f"    texture2ddecoder not installed, cannot decode DXT textures on macOS")
+            log.warning("    texture2ddecoder not installed, cannot decode DXT textures on macOS")
             return None
         except Exception as e:
             log.warning(f"    Error decoding DXT texture: {e}")

@@ -35,7 +35,7 @@ class CSSExtractor(BaseAssetExtractor):
 
         try:
             env = UnityPy.load(str(bundle_path))
-        except Exception as e:
+        except Exception:
             # If we can't load the bundle, return empty results
             return {"variables": variables, "classes": classes}
 
@@ -107,7 +107,7 @@ class CSSExtractor(BaseAssetExtractor):
             # Clean up UnityPy environment
             try:
                 del env
-            except:
+            except Exception:
                 pass
             gc.collect()
 
