@@ -98,13 +98,29 @@ class TextureExtractor(BaseAssetExtractor):
         Returns:
             Dictionary with texture metadata and image data
         """
+        import sys
+
+        log.info(f"    Getting asset name...")
+        sys.stdout.flush()
         name = self._get_asset_name(texture_obj)
+        log.info(f"    Asset name: {name}")
+        sys.stdout.flush()
+
         if not name:
             return None
 
         # Get dimensions
+        log.info(f"    Getting width...")
+        sys.stdout.flush()
         width = getattr(texture_obj, "m_Width", 0)
+        log.info(f"    Width: {width}")
+        sys.stdout.flush()
+
+        log.info(f"    Getting height...")
+        sys.stdout.flush()
         height = getattr(texture_obj, "m_Height", 0)
+        log.info(f"    Height: {height}")
+        sys.stdout.flush()
 
         # Classify texture type based on name patterns
         texture_type = self._classify_texture_type(name)
@@ -125,11 +141,15 @@ class TextureExtractor(BaseAssetExtractor):
                 }
 
             # Check texture format - some formats cause segfaults
+            log.info(f"    Getting texture format for {name}...")
+            sys.stdout.flush()
             texture_format = getattr(texture_obj, "m_TextureFormat", None)
+            log.info(f"    Texture format retrieved: {texture_format}")
+            sys.stdout.flush()
+
             texture_format_name = str(texture_format) if texture_format is not None else "unknown"
 
             # Log texture details for debugging - this helps identify crashes
-            import sys
             log.info(f"    Processing texture: {name} (format={texture_format_name}, {width}x{height})")
             sys.stdout.flush()
 
