@@ -182,10 +182,6 @@ jobs:
         working-directory: frontend
         run: npm ci
 
-      - name: Build frontend
-        working-directory: frontend
-        run: npm run build
-
       - name: Setup Windows code signing
         if: matrix.settings.platform == 'windows-latest' && github.event_name != 'pull_request'
         shell: pwsh
@@ -210,7 +206,7 @@ jobs:
         with:
           projectPath: frontend
           tauriScript: npm run tauri
-          args: ${{ matrix.settings.target != 'universal-apple-darwin' && format('--target {0}', matrix.settings.target) || '' }}
+          args: ${{ matrix.settings.target != 'universal-apple-darwin' && format('-- --target {0}', matrix.settings.target) || '' }}
 
       - name: Prepare artifacts
         shell: bash
