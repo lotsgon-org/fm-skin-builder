@@ -132,16 +132,21 @@ jobs:
         working-directory: frontend
         run: npm test
 
+      - name: Build frontend
+        working-directory: frontend
+        run: npm run build
+
       - name: Build Tauri app
         working-directory: frontend
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: |
+          # Backend already built in previous step, skip beforeBuildCommand
           if [ "${{ matrix.name }}" = "macos-aarch64" ]; then
-            npm run tauri build -- --target aarch64-apple-darwin
+            npm run tauri build -- --target aarch64-apple-darwin --config '{"build":{"beforeBuildCommand":""}}'
           else
-            npm run tauri build
+            npm run tauri build -- --config '{"build":{"beforeBuildCommand":""}}'
           fi
         shell: bash
 
