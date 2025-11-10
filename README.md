@@ -111,8 +111,36 @@ python -m fm_skin_builder.cli.main scan --bundle bundles --out build/scan --expo
 - Run `npm install` at the repo root to install Husky hooks. Pre-commit runs `ruff`, `cargo fmt/clippy`, and `eslint`; `commit-msg` enforces Conventional Commits.
 - `npm run lint:python`, `npm run lint:rust`, and `npm run lint:frontend` are available individually when iterating on failures.
 
+## Building & Distribution
+
+To build distributable application bundles for all platforms:
+
+```bash
+./scripts/build_local.sh
+```
+
+This creates standalone installers that bundle the Python backend—users don't need Python installed.
+
+Build artifacts are generated in `frontend/src-tauri/target/release/bundle/`:
+- **Linux**: AppImage and .deb packages
+- **macOS**: .dmg and .app bundles
+- **Windows**: NSIS installer (.exe) and MSI
+
+For detailed build instructions, code signing setup, and CI/CD configuration, see `docs/BUILD.md`.
+
+### Automated Builds
+
+GitHub Actions automatically builds for all platforms on every push to `main`. The workflow:
+- Builds on Ubuntu, macOS (Intel + ARM), and Windows
+- Runs all tests (Python + frontend)
+- Signs builds (when configured)
+- Uploads artifacts for download
+
+See `.github/workflows/build-app.yml` and `docs/BUILD.md` for details.
+
 ## Documentation
 
+- `docs/BUILD.md` — building and distributing the application
 - `docs/CLI_GUIDE.md` — step-by-step CLI usage and troubleshooting
 - `docs/README.md` — documentation index and quick start
 - `docs/SKIN_FORMAT.md` — skin layout and configuration schema

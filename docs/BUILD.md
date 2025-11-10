@@ -1,0 +1,368 @@
+# Building FM Skin Builder
+
+This document describes how to build FM Skin Builder for all platforms and set up automated builds with code signing.
+
+## Table of Contents
+
+- [Prerequisites](#prerequisites)
+- [Quick Start - Local Build](#quick-start---local-build)
+- [Platform-Specific Builds](#platform-specific-builds)
+- [Code Signing](#code-signing)
+- [Automated Builds (GitHub Actions)](#automated-builds-github-actions)
+- [Future: Auto-Updates with R2](#future-auto-updates-with-r2)
+- [Troubleshooting](#troubleshooting)
+
+## Prerequisites
+
+### All Platforms
+
+- **Node.js** 18 or higher ([download](https://nodejs.org/))
+- **Rust** latest stable ([install](https://rustup.rs/))
+- **Python** 3.9.19 ([download](https://www.python.org/downloads/))
+
+### Platform-Specific Requirements
+
+#### Linux (Ubuntu/Debian)
+
+```bash
+sudo apt-get update
+sudo apt-get install -y \
+  libwebkit2gtk-4.1-dev \
+  libappindicator3-dev \
+  librsvg2-dev \
+  patchelf \
+  libcairo2-dev \
+  libgdk-pixbuf2.0-dev \
+  libpango1.0-dev
+```
+
+#### macOS
+
+Install Xcode Command Line Tools:
+
+```bash
+xcode-select --install
+```
+
+#### Windows
+
+Install [Visual Studio Build Tools](https://visualstudio.microsoft.com/downloads/) with the following workloads:
+- "Desktop development with C++"
+- Windows 10/11 SDK
+
+## Quick Start - Local Build
+
+The easiest way to build the application locally:
+
+```bash
+# Clone the repository
+git clone https://github.com/yourusername/fm-skin-builder.git
+cd fm-skin-builder
+
+# Run the build script
+./scripts/build_local.sh
+```
+
+This script will:
+1. Set up the Python virtual environment
+2. Build the Python backend with PyInstaller
+3. Install frontend dependencies
+4. Build the Tauri application bundle
+
+Your build artifacts will be in `frontend/src-tauri/target/release/bundle/`:
+
+- **Linux**: `appimage/*.AppImage` and `deb/*.deb`
+- **macOS**: `dmg/*.dmg` and `macos/*.app`
+- **Windows**: `nsis/*.exe` and `msi/*.msi`
+
+## Platform-Specific Builds
+
+### Manual Build Steps
+
+If you want more control over the build process:
+
+1. **Set up Python environment**:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+pip install -r requirements.txt pyinstaller
+```
+
+2. **Build the Python backend**:
+
+```bash
+./scripts/build_backend.sh
+```
+
+3. **Install frontend dependencies**:
+
+```bash
+cd frontend
+npm install
+```
+
+4. **Build the Tauri app**:
+
+```bash
+# For the current platform
+npm run tauri build
+
+# For specific target (macOS only)
+npm run tauri build -- --target aarch64-apple-darwin
+```
+
+### Cross-Platform Builds
+
+Currently, cross-compilation is limited. Each platform should be built on its native OS:
+
+- **Linux builds**: Build on Linux (Ubuntu 22.04 recommended)
+- **Windows builds**: Build on Windows (Windows 11 recommended)
+- **macOS Intel**: Build on macOS Intel or M1/M2 with Rosetta
+- **macOS Apple Silicon**: Build on macOS M1/M2
+
+The GitHub Actions workflow handles this automatically by using a build matrix.
+
+## Code Signing
+
+Code signing helps users trust your application and, on some platforms, is required for certain features.
+
+### Windows Code Signing
+
+#### Option 1: Self-Signed Certificate (Testing Only)
+
+For local testing, generate a self-signed certificate:
+
+```powershell
+# Run in PowerShell as Administrator
+.\scripts\setup_windows_signing.ps1
+```
+
+This will:
+- Create a self-signed certificate
+- Export it as a .pfx file
+- Show you the thumbprint to add to `tauri.conf.json`
+
+**Warning**: Self-signed certificates will show security warnings to users.
+
+#### Option 2: Trusted Certificate Authority (Production)
+
+For production releases, obtain a code signing certificate from a trusted CA:
+
+1. Purchase a certificate from providers like:
+   - [DigiCert](https://www.digecert.com/)
+   - [Sectigo](https://www.sectigo.com/)
+   - [SSL.com](https://www.ssl.com/)
+
+2. Export the certificate as a .pfx file with a strong password
+
+3. Update `frontend/src-tauri/tauri.conf.json`:
+
+```json
+{
+  "bundle": {
+    "windows": {
+      "certificateThumbprint": "YOUR_CERTIFICATE_THUMBPRINT_HERE"
+    }
+  }
+}
+```
+
+4. For GitHub Actions, add secrets (see below)
+
+### macOS Code Signing
+
+macOS code signing requires an Apple Developer account ($99/year):
+
+1. Join the [Apple Developer Program](https://developer.apple.com/programs/)
+2. Create certificates in Xcode or the Developer Portal
+3. Configure Tauri to use your certificate
+
+**Note**: Until you have a Developer account, macOS builds will be unsigned. Users will need to right-click and select "Open" to run the app.
+
+### Tauri Update Signing (All Platforms)
+
+For future auto-update functionality, generate signing keys:
+
+```bash
+./scripts/generate_tauri_keys.sh
+```
+
+This generates:
+- A **private key** (keep secret, used to sign updates)
+- A **public key** (embedded in the app, used to verify updates)
+
+Store the private key and password securely (e.g., in GitHub Secrets for CI/CD).
+
+## Automated Builds (GitHub Actions)
+
+The project includes a comprehensive GitHub Actions workflow that builds for all platforms.
+
+### Setting Up GitHub Actions
+
+1. **Fork/clone the repository**
+
+2. **Add GitHub Secrets** (Settings → Secrets and variables → Actions):
+
+   **For Windows Code Signing** (optional):
+   ```
+   WINDOWS_CERTIFICATE: <base64-encoded .pfx file>
+   WINDOWS_CERTIFICATE_PASSWORD: <certificate password>
+   ```
+
+   To encode the certificate:
+   ```powershell
+   [Convert]::ToBase64String([IO.File]::ReadAllBytes("path\to\cert.pfx"))
+   ```
+
+   **For Tauri Update Signing** (recommended):
+   ```
+   TAURI_SIGNING_PRIVATE_KEY: <private key from generate_tauri_keys.sh>
+   TAURI_SIGNING_PRIVATE_KEY_PASSWORD: <password from generate_tauri_keys.sh>
+   ```
+
+3. **Trigger a build**:
+
+   - Push to `main` branch
+   - Create a pull request
+   - Run workflow manually (Actions → Build Application → Run workflow)
+
+### Workflow Overview
+
+The `.github/workflows/build-app.yml` workflow:
+
+1. **Builds on multiple platforms**:
+   - Ubuntu 22.04 (Linux x86_64)
+   - Windows Latest (x86_64)
+   - macOS Latest (x86_64 and ARM64)
+
+2. **For each platform**:
+   - Sets up dependencies (Rust, Node, Python)
+   - Runs Python tests
+   - Runs frontend tests
+   - Builds Python backend with PyInstaller
+   - Builds Tauri application
+   - Signs the build (if configured)
+   - Uploads artifacts
+
+3. **Tests the builds**:
+   - Validates Linux AppImage structure
+   - Verifies Windows installer exists
+
+4. **Artifacts**:
+   - Retained for 30 days
+   - Named by platform (e.g., `fm-skin-builder-linux`)
+
+### Downloading Artifacts
+
+After a successful build:
+
+1. Go to Actions tab in GitHub
+2. Click on the workflow run
+3. Scroll down to "Artifacts"
+4. Download the build for your platform
+
+## Future: Auto-Updates with R2
+
+The build system is designed with future auto-update functionality in mind:
+
+### Planned Architecture
+
+1. **Build artifacts uploaded to Cloudflare R2**:
+   - Each release is uploaded with version number
+   - JSON manifest tracks latest versions per platform
+
+2. **Tauri auto-updater**:
+   - Periodically checks R2 for updates
+   - Downloads and verifies signature
+   - Installs update seamlessly
+
+3. **Direct downloads**:
+   - Website links directly to R2 URLs
+   - No GitHub dependency for distribution
+
+### Preparation
+
+To prepare for this:
+
+1. **Generate signing keys** (if not already done):
+   ```bash
+   ./scripts/generate_tauri_keys.sh
+   ```
+
+2. **Store keys securely** in GitHub Secrets
+
+3. **When ready**, update the workflow to:
+   - Upload to R2 after building
+   - Update version manifest
+   - Configure Tauri updater in `tauri.conf.json`
+
+## Troubleshooting
+
+### Build Failures
+
+**"Backend binary missing"**:
+- Run `./scripts/build_backend.sh` manually
+- Check that Python 3.9.19 is installed
+- Verify all Python dependencies are installed
+
+**"failed to bundle project"**:
+- Ensure all platform-specific dependencies are installed
+- Check that Node modules are installed (`npm install`)
+- Verify Rust is up to date (`rustup update`)
+
+**PyInstaller errors**:
+- Check Python version matches `pyproject.toml`
+- Try rebuilding the virtual environment
+- Look for missing Python packages
+
+### Code Signing Issues
+
+**Windows "certificate not found"**:
+- Verify certificate is imported to `Cert:\CurrentUser\My`
+- Check thumbprint matches `tauri.conf.json`
+- Ensure certificate is valid and not expired
+
+**macOS "app is damaged"**:
+- This happens with unsigned apps
+- Users should right-click and select "Open"
+- Or sign the app with a Developer certificate
+
+**Tauri signing key errors**:
+- Ensure the private key is correctly formatted
+- Verify the password is correct
+- Check that the public key is in `tauri.conf.json`
+
+### Platform-Specific Issues
+
+**Linux: Missing libraries**:
+```bash
+ldd frontend/src-tauri/target/release/fm-skin-builder
+# Install any missing libraries shown
+```
+
+**macOS: "cannot be opened because the developer cannot be verified"**:
+```bash
+xattr -cr /path/to/FM\ Skin\ Builder.app
+```
+
+**Windows: "VCRUNTIME140.dll not found"**:
+- Install [Visual C++ Redistributable](https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist)
+
+## Additional Resources
+
+- [Tauri Documentation](https://tauri.app/v1/guides/)
+- [PyInstaller Documentation](https://pyinstaller.org/)
+- [GitHub Actions Documentation](https://docs.github.com/en/actions)
+- [Windows Code Signing Guide](https://docs.microsoft.com/en-us/windows/win32/seccrypto/using-signtool-to-sign-a-file)
+
+## Getting Help
+
+If you encounter issues:
+
+1. Check the [Troubleshooting](#troubleshooting) section
+2. Search [existing issues](https://github.com/yourusername/fm-skin-builder/issues)
+3. Create a new issue with:
+   - Your OS and version
+   - Error messages (full output)
+   - Steps to reproduce
