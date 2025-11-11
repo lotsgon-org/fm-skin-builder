@@ -73,8 +73,9 @@ def make_fake_env_for_scan():
     strings = ["--primary", "--accent"]
     rules = [
         FakeRule([FakeProperty("color", [FakeValue(3, 0), FakeValue(4, 0)])]),
-        FakeRule([FakeProperty("background-color",
-                 [FakeValue(3, 1), FakeValue(4, 1)])])
+        FakeRule(
+            [FakeProperty("background-color", [FakeValue(3, 1), FakeValue(4, 1)])]
+        ),
     ]
     complex_selectors = [
         FakeComplexSelector(0, [FakeSelector([FakeSelPart("green", 3)])]),
@@ -91,14 +92,22 @@ def test_cli_scan_exports_index_and_uss(tmp_path, monkeypatch):
 
     # Mock UnityPy
     from fm_skin_builder.core import bundle_inspector as inspector
-    inspector.UnityPy = SimpleNamespace(
-        load=lambda path: make_fake_env_for_scan())
+
+    inspector.UnityPy = SimpleNamespace(load=lambda path: make_fake_env_for_scan())
 
     # Run CLI
     out_dir = tmp_path / "scan_out"
     from fm_skin_builder.cli import main as cli_main
-    argv = ["prog", "scan", "--bundle",
-            str(bundle), "--out", str(out_dir), "--export-uss"]
+
+    argv = [
+        "prog",
+        "scan",
+        "--bundle",
+        str(bundle),
+        "--out",
+        str(out_dir),
+        "--export-uss",
+    ]
     monkeypatch.setattr(sys, "argv", argv, raising=False)
     cli_main.main()
 

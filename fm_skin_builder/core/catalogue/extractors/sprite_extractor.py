@@ -110,7 +110,9 @@ class SpriteExtractor(BaseAssetExtractor):
 
         return sprites
 
-    def _extract_sprite_data(self, sprite_obj: Any, bundle_name: str) -> Optional[Dict[str, Any]]:
+    def _extract_sprite_data(
+        self, sprite_obj: Any, bundle_name: str
+    ) -> Optional[Dict[str, Any]]:
         """
         Extract sprite data and image.
 
@@ -173,7 +175,23 @@ class SpriteExtractor(BaseAssetExtractor):
                 tex_format = getattr(tex_data, "m_TextureFormat", None)
 
                 # Skip problematic formats (same as texture extractor)
-                problematic_formats = [48, 49, 50, 51, 52, 53, 34, 45, 46, 47, 26, 30, 31, 32, 33]
+                problematic_formats = [
+                    48,
+                    49,
+                    50,
+                    51,
+                    52,
+                    53,
+                    34,
+                    45,
+                    46,
+                    47,
+                    26,
+                    30,
+                    31,
+                    32,
+                    33,
+                ]
 
                 if tex_format in problematic_formats:
                     return {
@@ -237,7 +255,9 @@ class SpriteExtractor(BaseAssetExtractor):
                 pil_bottom = min(tex_height, pil_bottom)
 
                 # Crop the sprite from the texture
-                sprite_image = texture_image.crop((pil_left, pil_top, pil_right, pil_bottom))
+                sprite_image = texture_image.crop(
+                    (pil_left, pil_top, pil_right, pil_bottom)
+                )
 
                 # If image is very large, resize to save memory
                 if sprite_image.width > 2048 or sprite_image.height > 2048:

@@ -70,7 +70,7 @@ def _get_base_name(name: str) -> str:
     # Remove common size suffixes
     # Pattern: _\d+x?\d* (e.g., _16, _24, _32, _64, _128x128)
     # Pattern: @\dx (e.g., @2x, @3x)
-    base = re.sub(r'_\d+x?\d*(@\dx)?$', '', name)
-    base = re.sub(r'@\dx$', '', base)
+    base = re.sub(r"_\d+x?\d*(@\dx)?$", "", name)
+    base = re.sub(r"@\dx$", "", base)
 
     return base

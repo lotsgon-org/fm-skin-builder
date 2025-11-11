@@ -71,7 +71,8 @@ class FontExtractor(BaseAssetExtractor):
 
         # Split by common delimiters
         import re
-        parts = re.split(r'[-_\s]', name.lower())
+
+        parts = re.split(r"[-_\s]", name.lower())
 
         for part in parts:
             if len(part) > 2:

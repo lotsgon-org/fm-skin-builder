@@ -35,17 +35,21 @@ def run(args: Namespace) -> None:
     fm_version = args.fm_version
 
     # Get catalogue version (default: 1)
-    catalogue_version = getattr(args, 'catalogue_version', 1)
+    catalogue_version = getattr(args, "catalogue_version", 1)
 
     # Pretty-print JSON flag
-    pretty = getattr(args, 'pretty', False)
+    pretty = getattr(args, "pretty", False)
 
     # Dry-run flag
-    dry_run = getattr(args, 'dry_run', False)
+    dry_run = getattr(args, "dry_run", False)
 
     # Get icon paths
-    icon_white = Path(__file__).parent.parent.parent.parent / "icons" / "SVG" / "White.svg"
-    icon_black = Path(__file__).parent.parent.parent.parent / "icons" / "SVG" / "Black.svg"
+    icon_white = (
+        Path(__file__).parent.parent.parent.parent / "icons" / "SVG" / "White.svg"
+    )
+    icon_black = (
+        Path(__file__).parent.parent.parent.parent / "icons" / "SVG" / "Black.svg"
+    )
 
     if not icon_white.exists():
         log.warning(f"White icon not found: {icon_white}")
@@ -78,4 +82,5 @@ def run(args: Namespace) -> None:
     except Exception as e:
         log.error(f"Failed to build catalogue: {e}")
         import traceback
+
         traceback.print_exc()

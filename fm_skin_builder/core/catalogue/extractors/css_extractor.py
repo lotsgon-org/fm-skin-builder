@@ -72,9 +72,7 @@ class CSSExtractor(BaseAssetExtractor):
                             continue
 
                         # Parse values
-                        value_defs = self._extract_values(
-                            prop, strings, colors
-                        )
+                        value_defs = self._extract_values(prop, strings, colors)
 
                         # Check if this property defines a CSS variable
                         if prop_name and prop_name.startswith("--"):
@@ -124,9 +122,11 @@ class CSSExtractor(BaseAssetExtractor):
             Dictionary mapping rule index to list of selector strings
         """
         rules = getattr(data, "m_Rules", [])
-        selectors = getattr(data, "m_ComplexSelectors", []) if hasattr(
-            data, "m_ComplexSelectors"
-        ) else []
+        selectors = (
+            getattr(data, "m_ComplexSelectors", [])
+            if hasattr(data, "m_ComplexSelectors")
+            else []
+        )
 
         out: Dict[int, List[str]] = {i: [] for i in range(len(rules))}
 
@@ -316,7 +316,7 @@ class CSSExtractor(BaseAssetExtractor):
         clean = selector.lstrip(".#")
 
         # Split by - or _
-        parts = re.split(r'[-_]', clean)
+        parts = re.split(r"[-_]", clean)
 
         for part in parts:
             if len(part) > 2:  # Skip very short parts

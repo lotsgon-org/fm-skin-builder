@@ -13,8 +13,11 @@ log = get_logger(__name__)
 
 def _safe_rule_selectors(data) -> Dict[int, List[str]]:
     rules = getattr(data, "m_Rules", [])
-    selectors = getattr(data, "m_ComplexSelectors", []) if hasattr(
-        data, "m_ComplexSelectors") else []
+    selectors = (
+        getattr(data, "m_ComplexSelectors", [])
+        if hasattr(data, "m_ComplexSelectors")
+        else []
+    )
     out: Dict[int, List[str]] = {i: [] for i in range(len(rules))}
     for sel in selectors:
         rule_idx = getattr(sel, "ruleIndex", -1)
@@ -29,7 +32,9 @@ def _safe_rule_selectors(data) -> Dict[int, List[str]]:
     return out
 
 
-def scan_bundle(bundle_path: Path, out_dir: Path, export_uss: bool = True) -> Dict[str, Any]:
+def scan_bundle(
+    bundle_path: Path, out_dir: Path, export_uss: bool = True
+) -> Dict[str, Any]:
     env = UnityPy.load(str(bundle_path))
     out_dir.mkdir(parents=True, exist_ok=True)
     uss_dir = out_dir / "scan_uss"
@@ -45,7 +50,7 @@ def scan_bundle(bundle_path: Path, out_dir: Path, export_uss: bool = True) -> Di
         # Additive catalogs for non-style bundles
         "textures": [],
         "sprites": [],
-        "aliases": []
+        "aliases": [],
     }
 
     selector_to_assets: Dict[str, set] = {}
@@ -95,7 +100,8 @@ def scan_bundle(bundle_path: Path, out_dir: Path, export_uss: bool = True) -> Di
             try:
                 for entry in list(container):
                     alias = getattr(entry, "first", None) or getattr(
-                        entry, "name", None)
+                        entry, "name", None
+                    )
                     if alias:
                         index["aliases"].append(str(alias))
             except Exception:
@@ -121,8 +127,10 @@ def scan_bundle(bundle_path: Path, out_dir: Path, export_uss: bool = True) -> Di
         asset_info = {
             "name": name,
             "path_id": path_id,
-            "string_vars": [s for s in strings if isinstance(s, str) and s.startswith("--")],
-            "rules": []
+            "string_vars": [
+                s for s in strings if isinstance(s, str) and s.startswith("--")
+            ],
+            "rules": [],
         }
 
         for i, rule in enumerate(rules):
@@ -138,23 +146,39 @@ def scan_bundle(bundle_path: Path, out_dir: Path, export_uss: bool = True) -> Di
                     vt = getattr(val, "m_ValueType", None)
                     vi = getattr(val, "valueIndex", None)
                     rec: Dict[str, Any] = {"type": vt, "index": vi}
-                    if vt in (3, 8, 10) and isinstance(vi, int) and 0 <= vi < len(strings):
+                    if (
+                        vt in (3, 8, 10)
+                        and isinstance(vi, int)
+                        and 0 <= vi < len(strings)
+                    ):
                         rec["string"] = strings[vi]
-                        if isinstance(strings[vi], str) and strings[vi].startswith("--"):
+                        if isinstance(strings[vi], str) and strings[vi].startswith(
+                            "--"
+                        ):
                             vm = index["var_map"].setdefault(strings[vi], [])
-                            vm.append({"asset": name, "rule": i,
-                                      "prop": prop_name, "color_index": vi})
+                            vm.append(
+                                {
+                                    "asset": name,
+                                    "rule": i,
+                                    "prop": prop_name,
+                                    "color_index": vi,
+                                }
+                            )
                     if vt == 4 and isinstance(vi, int) and 0 <= vi < len(colors):
                         c = colors[vi]
                         rec["color"] = {"r": c.r, "g": c.g, "b": c.b, "a": c.a}
                     values_info.append(rec)
                 props_info.append({"name": prop_name, "values": values_info})
                 for sel in selectors:
-                    sm = index["selector_map"].setdefault(
-                        sel, {}).setdefault(prop_name, [])
+                    sm = (
+                        index["selector_map"]
+                        .setdefault(sel, {})
+                        .setdefault(prop_name, [])
+                    )
                     sm.append({"asset": name, "rule": i})
             asset_info["rules"].append(
-                {"idx": i, "selectors": selectors, "properties": props_info})
+                {"idx": i, "selectors": selectors, "properties": props_info}
+            )
 
         index["assets"].append(asset_info)
 
@@ -171,8 +195,9 @@ def scan_bundle(bundle_path: Path, out_dir: Path, export_uss: bool = True) -> Di
             index["conflicts"]["selectors"][sel] = sorted(list(assets))
 
     # write index json
-    (out_dir / "bundle_index.json").write_text(json.dumps(index,
-                                                          ensure_ascii=False, indent=2), encoding="utf-8")
+    (out_dir / "bundle_index.json").write_text(
+        json.dumps(index, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
     # Proactively release UnityPy env
     try:
         del env

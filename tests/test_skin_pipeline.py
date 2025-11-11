@@ -36,8 +36,7 @@ class FakeBundleContext:
         if dry_run or not self._dirty:
             return None
         out_dir.mkdir(parents=True, exist_ok=True)
-        out_path = out_dir / \
-            f"{self.bundle_path.stem}{suffix}{self.bundle_path.suffix}"
+        out_path = out_dir / f"{self.bundle_path.stem}{suffix}{self.bundle_path.suffix}"
         out_path.write_bytes(b"patched")
         return out_path
 
@@ -55,7 +54,9 @@ class FakeCssService:
         report = PatchReport(bundle_ctx.bundle_path, dry_run=self._dry_run)
         report.assets_modified.add("FakeAsset")
         report.summary_lines.append(
-            f"Dry run summary for {bundle_ctx.bundle_path.name}" if report.dry_run else "Patched bundle"
+            f"Dry run summary for {bundle_ctx.bundle_path.name}"
+            if report.dry_run
+            else "Patched bundle"
         )
         bundle_ctx.mark_dirty()
         return report
@@ -83,11 +84,13 @@ def reset_texture_service_calls():
 
 def _setup_common_stubs(monkeypatch, *, dry_run: bool) -> None:
     monkeypatch.setattr(
-        "fm_skin_builder.core.css_patcher.BundleContext", FakeBundleContext)
+        "fm_skin_builder.core.css_patcher.BundleContext", FakeBundleContext
+    )
     css_service = FakeCssService()
     css_service._dry_run = dry_run
-    monkeypatch.setattr("fm_skin_builder.core.css_patcher.CssPatchService",
-                        lambda *a, **k: css_service)
+    monkeypatch.setattr(
+        "fm_skin_builder.core.css_patcher.CssPatchService", lambda *a, **k: css_service
+    )
     monkeypatch.setattr(
         "fm_skin_builder.core.css_patcher.collect_css_from_dir",
         lambda path: ({"--primary": "#FFF"}, {(".selector", "color"): "#000"}),
@@ -97,9 +100,11 @@ def _setup_common_stubs(monkeypatch, *, dry_run: bool) -> None:
         lambda path: (None, None, None),
     )
     monkeypatch.setattr(
-        "fm_skin_builder.core.css_patcher.collect_replacement_stems", lambda *a, **k: [])
+        "fm_skin_builder.core.css_patcher.collect_replacement_stems", lambda *a, **k: []
+    )
     monkeypatch.setattr(
-        "fm_skin_builder.core.css_patcher.load_texture_name_map", lambda *_: {})
+        "fm_skin_builder.core.css_patcher.load_texture_name_map", lambda *_: {}
+    )
 
 
 def test_pipeline_produces_summary_in_dry_run(tmp_path: Path, monkeypatch):
@@ -119,8 +124,7 @@ def test_pipeline_produces_summary_in_dry_run(tmp_path: Path, monkeypatch):
     pipeline = SkinPatchPipeline(
         css_dir,
         out_dir,
-        PipelineOptions(dry_run=True, use_scan_cache=False,
-                        refresh_scan_cache=False),
+        PipelineOptions(dry_run=True, use_scan_cache=False, refresh_scan_cache=False),
     )
 
     result = pipeline.run(bundle=bundle_path)
@@ -145,7 +149,9 @@ def test_pipeline_texture_prefilter_invokes_swap(tmp_path: Path, monkeypatch):
         lambda *_: SimpleNamespace(includes=["assets/icons"]),
     )
     monkeypatch.setattr(
-        "fm_skin_builder.core.css_patcher.TextureSwapService", RecordingTextureSwapService)
+        "fm_skin_builder.core.css_patcher.TextureSwapService",
+        RecordingTextureSwapService,
+    )
     monkeypatch.setattr(
         "fm_skin_builder.core.css_patcher._load_or_refresh_scan_cache",
         lambda *a, **k: {"FakeAsset"},
@@ -169,8 +175,7 @@ def test_pipeline_texture_prefilter_invokes_swap(tmp_path: Path, monkeypatch):
     pipeline = SkinPatchPipeline(
         css_dir,
         out_dir,
-        PipelineOptions(dry_run=False, use_scan_cache=True,
-                        refresh_scan_cache=False),
+        PipelineOptions(dry_run=False, use_scan_cache=True, refresh_scan_cache=False),
     )
 
     result = pipeline.run(bundle=bundle_path)
@@ -195,15 +200,16 @@ def test_pipeline_texture_prefilter_skips_when_no_interest(tmp_path: Path, monke
         lambda *_: SimpleNamespace(includes=["assets/icons"]),
     )
     monkeypatch.setattr(
-        "fm_skin_builder.core.css_patcher.TextureSwapService", RecordingTextureSwapService)
+        "fm_skin_builder.core.css_patcher.TextureSwapService",
+        RecordingTextureSwapService,
+    )
     monkeypatch.setattr(
         "fm_skin_builder.core.css_patcher._load_or_refresh_scan_cache",
         lambda *a, **k: {"FakeAsset"},
     )
     monkeypatch.setattr(
         "fm_skin_builder.core.css_patcher.load_cached_bundle_index",
-        lambda css_dir, bundle_path, skin_cache_dir=None: {
-            "textures": ["Another"]},
+        lambda css_dir, bundle_path, skin_cache_dir=None: {"textures": ["Another"]},
     )
     monkeypatch.setattr(
         "fm_skin_builder.core.css_patcher.load_texture_name_map",
@@ -217,8 +223,7 @@ def test_pipeline_texture_prefilter_skips_when_no_interest(tmp_path: Path, monke
     pipeline = SkinPatchPipeline(
         css_dir,
         out_dir,
-        PipelineOptions(dry_run=False, use_scan_cache=True,
-                        refresh_scan_cache=False),
+        PipelineOptions(dry_run=False, use_scan_cache=True, refresh_scan_cache=False),
     )
 
     result = pipeline.run(bundle=bundle_path)

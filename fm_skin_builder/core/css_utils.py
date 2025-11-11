@@ -120,7 +120,11 @@ def load_css_vars(path: Path) -> Dict[str, str]:
         normalised = normalize_css_color(value)
         if not normalised:
             log.warning(
-                "Skipping unsupported CSS colour '%s' for --%s in %s", value.strip(), name, path)
+                "Skipping unsupported CSS colour '%s' for --%s in %s",
+                value.strip(),
+                name,
+                path,
+            )
             continue
         css[f"--{name}"] = normalised
     log.info("🎨 Loaded %s CSS variables from %s", len(css), path)
@@ -195,9 +199,11 @@ def serialize_stylesheet_to_uss(data) -> str:
     colors = getattr(data, "colors", [])
     floats = getattr(data, "floats", []) if hasattr(data, "floats") else []
     rules = getattr(data, "m_Rules", [])
-    selectors = getattr(data, "m_ComplexSelectors", []) if hasattr(
-        data, "m_ComplexSelectors"
-    ) else []
+    selectors = (
+        getattr(data, "m_ComplexSelectors", [])
+        if hasattr(data, "m_ComplexSelectors")
+        else []
+    )
 
     color_properties = {
         "color",
@@ -213,8 +219,7 @@ def serialize_stylesheet_to_uss(data) -> str:
             continue
         selector_text = ""
         if hasattr(sel, "m_Selectors") and sel.m_Selectors:
-            parts = sel.m_Selectors[0].m_Parts if sel.m_Selectors[0].m_Parts else [
-            ]
+            parts = sel.m_Selectors[0].m_Parts if sel.m_Selectors[0].m_Parts else []
             for part in parts:
                 val = getattr(part, "m_Value", "")
                 ptype = getattr(part, "m_Type", 0)
@@ -232,8 +237,7 @@ def serialize_stylesheet_to_uss(data) -> str:
         for prop in getattr(rule, "m_Properties", []):
             prop_name = getattr(prop, "m_Name", "")
             values = list(getattr(prop, "m_Values", []))
-            type4_vals = [v for v in values if getattr(
-                v, "m_ValueType", None) == 4]
+            type4_vals = [v for v in values if getattr(v, "m_ValueType", None) == 4]
             if type4_vals:
                 for val in type4_vals:
                     value_type = getattr(val, "m_ValueType", None)
@@ -305,8 +309,7 @@ def clean_for_json(obj, seen=None, max_depth: int = 10):
             else None,
         }
 
-    selector_keys = ["m_Specificity", "m_Type",
-                     "m_PreviousRelationship", "ruleIndex"]
+    selector_keys = ["m_Specificity", "m_Type", "m_PreviousRelationship", "ruleIndex"]
     if any(hasattr(obj, k) for k in selector_keys):
         result = {}
         for k in getattr(obj, "__dict__", {}).keys():
@@ -319,9 +322,9 @@ def clean_for_json(obj, seen=None, max_depth: int = 10):
                 result[k] = clean_for_json(v, seen, max_depth - 1)
         return result
 
-    if all(hasattr(obj, c) for c in ("r", "g", "b", "a")) and type(obj).__name__.lower().startswith(
-        "color"
-    ):
+    if all(hasattr(obj, c) for c in ("r", "g", "b", "a")) and type(
+        obj
+    ).__name__.lower().startswith("color"):
         return {
             "r": float(obj.r),
             "g": float(obj.g),

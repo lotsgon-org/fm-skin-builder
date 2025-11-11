@@ -1,1 +1,2 @@
-def run(args): print('swap (stub)')
+def run(args):
+    print("swap (stub)")

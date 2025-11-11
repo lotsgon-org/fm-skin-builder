@@ -44,11 +44,10 @@ def test_texture_swap_via_sprite_alias(tmp_path, monkeypatch):
     # Skin config with icons includes
     skin = tmp_path / "skins" / "demo"
     (skin / "assets" / "icons").mkdir(parents=True)
-    (skin / "config.json").write_text(json.dumps({
-        "schema_version": 2,
-        "name": "Demo",
-        "includes": ["assets/icons"]
-    }), encoding="utf-8")
+    (skin / "config.json").write_text(
+        json.dumps({"schema_version": 2, "name": "Demo", "includes": ["assets/icons"]}),
+        encoding="utf-8",
+    )
 
     # Replacement file uses Sprite name
     (skin / "assets" / "icons" / "HeroBg.png").write_bytes(b"PNGDATA")
@@ -71,6 +70,7 @@ def test_texture_swap_via_sprite_alias(tmp_path, monkeypatch):
     # Wire env loader
     from fm_skin_builder.core import css_patcher as cp
     from fm_skin_builder.core import textures as tx
+
     cp.UnityPy = SimpleNamespace(load=lambda path: env)
     tx.UnityPy = SimpleNamespace(load=lambda path: env)
 

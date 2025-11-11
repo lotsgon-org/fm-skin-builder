@@ -44,15 +44,17 @@ def test_texture_swap_via_assetbundle_container_alias(tmp_path, monkeypatch, cap
     # Skin with config v2 and includes backgrounds
     skin = tmp_path / "skins" / "demo"
     (skin / "assets" / "backgrounds").mkdir(parents=True)
-    (skin / "config.json").write_text(json.dumps({
-        "schema_version": 2,
-        "name": "Demo",
-        "includes": ["assets/backgrounds"]
-    }), encoding="utf-8")
+    (skin / "config.json").write_text(
+        json.dumps(
+            {"schema_version": 2, "name": "Demo", "includes": ["assets/backgrounds"]}
+        ),
+        encoding="utf-8",
+    )
 
     # Replacement file uses the container alias name, different format
-    (skin / "assets" / "backgrounds" /
-     "premier_league_skin_fm26.jpg").write_bytes(b"JPGDATA")
+    (skin / "assets" / "backgrounds" / "premier_league_skin_fm26.jpg").write_bytes(
+        b"JPGDATA"
+    )
 
     # Bundle at repo root for inference
     bundle_file = tmp_path / "ui.bundle"
@@ -64,7 +66,8 @@ def test_texture_swap_via_assetbundle_container_alias(tmp_path, monkeypatch, cap
 
     # AssetBundle container maps alias name to texture path id
     container_entry = SimpleNamespace(
-        first="premier_league_skin_fm26.png", second=SimpleNamespace(m_PathID=1001))
+        first="premier_league_skin_fm26.png", second=SimpleNamespace(m_PathID=1001)
+    )
     ab_data = SimpleNamespace(m_Container=[container_entry])
     ab_obj = FakeObj("AssetBundle", ab_data)
 
@@ -73,6 +76,7 @@ def test_texture_swap_via_assetbundle_container_alias(tmp_path, monkeypatch, cap
     # Wire env loader
     from fm_skin_builder.core import css_patcher as cp
     from fm_skin_builder.core import textures as tx
+
     cp.UnityPy = SimpleNamespace(load=lambda path: env)
     tx.UnityPy = SimpleNamespace(load=lambda path: env)
 

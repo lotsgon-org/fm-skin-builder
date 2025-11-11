@@ -70,19 +70,19 @@ class SearchIndexBuilder:
         # Index CSS variable colors
         for var in css_variables:
             for color in var.colors:
-                if color and color.startswith('#'):
+                if color and color.startswith("#"):
                     palette["css_variables"][color].append(var.name)
 
         # Index sprite colors
         for sprite in sprites:
             for color in sprite.dominant_colors:
-                if color and color.startswith('#'):
+                if color and color.startswith("#"):
                     palette["sprites"][color].append(sprite.name)
 
         # Index texture colors
         for texture in textures:
             for color in texture.dominant_colors:
-                if color and color.startswith('#'):
+                if color and color.startswith("#"):
                     palette["textures"][color].append(texture.name)
 
         # Convert defaultdicts to regular dicts
@@ -111,17 +111,19 @@ class SearchIndexBuilder:
         Returns:
             Dictionary mapping tags to assets by type
         """
-        tag_index = defaultdict(lambda: {
-            "css_variables": [],
-            "css_classes": [],
-            "sprites": [],
-            "textures": [],
-        })
+        tag_index = defaultdict(
+            lambda: {
+                "css_variables": [],
+                "css_classes": [],
+                "sprites": [],
+                "textures": [],
+            }
+        )
 
         # Index CSS variable tags (extract from name)
         for var in css_variables:
             # Extract tags from variable name
-            name_parts = var.name.lstrip('--').replace('-', '_').split('_')
+            name_parts = var.name.lstrip("--").replace("-", "_").split("_")
             for part in name_parts:
                 if len(part) > 2:
                     tag_index[part.lower()]["css_variables"].append(var.name)

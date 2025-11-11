@@ -2,9 +2,12 @@
 Test catalogue utility functions.
 """
 
-
 from fm_skin_builder.core.catalogue.auto_tagger import generate_tags, generate_css_tags
-from fm_skin_builder.core.catalogue.color_search import hex_to_rgb, rgb_to_lab, color_distance
+from fm_skin_builder.core.catalogue.color_search import (
+    hex_to_rgb,
+    rgb_to_lab,
+    color_distance,
+)
 from fm_skin_builder.core.catalogue.content_hasher import compute_hash
 from fm_skin_builder.core.catalogue.deduplicator import deduplicate_by_filename
 
@@ -83,11 +86,13 @@ def test_compute_hash():
 def test_deduplicate_by_filename():
     """Test filename deduplication."""
     # Test size variants
-    result = deduplicate_by_filename([
-        "icon_player_16",
-        "icon_player_24",
-        "icon_player_32",
-    ])
+    result = deduplicate_by_filename(
+        [
+            "icon_player_16",
+            "icon_player_24",
+            "icon_player_32",
+        ]
+    )
 
     assert "icon_player_16" in result
     aliases = result["icon_player_16"]
@@ -100,9 +105,11 @@ def test_deduplicate_by_filename():
     assert result["icon_unique"] == []
 
     # Test @2x variants
-    result = deduplicate_by_filename([
-        "bg_grass",
-        "bg_grass@2x",
-    ])
+    result = deduplicate_by_filename(
+        [
+            "bg_grass",
+            "bg_grass@2x",
+        ]
+    )
     assert "bg_grass" in result
     assert "bg_grass@2x" in result["bg_grass"]
