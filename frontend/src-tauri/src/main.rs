@@ -248,18 +248,6 @@ async fn run_python_task(
             err_msg
         })?;
 
-    // Store child process for potential cancellation
-    {
-        let mut child_guard = state.child.lock().await;
-        *child_guard = Some(child);
-        drop(child_guard); // Explicitly drop to release lock
-    }
-
-    // Get a new reference to the child from state
-    let child_ref = state.child.clone();
-    let mut child_guard = child_ref.lock().await;
-    let child_mut = child_guard.as_mut().ok_or("Child process disappeared")?;
-
     // Emit that backend has started
     let _ = app_handle.emit(
         "build_log",
@@ -269,20 +257,23 @@ async fn run_python_task(
         },
     );
 
-    // Get stdout and stderr handles
-    let stdout = child_mut.stdout.take().ok_or("Failed to capture stdout")?;
-    let stderr = child_mut.stderr.take().ok_or("Failed to capture stderr")?;
+    // CRITICAL: Take stdout and stderr BEFORE storing the child in the mutex
+    let stdout = child.stdout.take().ok_or("Failed to capture stdout")?;
+    let stderr = child.stderr.take().ok_or("Failed to capture stderr")?;
 
-    // Release the lock before spawning tasks
-    drop(child_guard);
+    // NOW store child process for potential cancellation (after taking stdout/stderr)
+    {
+        let mut child_guard = state.child.lock().await;
+        *child_guard = Some(child);
+    }
 
     // Create buffered readers
     let mut stdout_reader = BufReader::new(stdout).lines();
     let mut stderr_reader = BufReader::new(stderr).lines();
 
     // Storage for complete output (for backward compatibility)
-    let mut stdout_lines = Vec::new();
-    let mut stderr_lines = Vec::new();
+    let stdout_lines: Vec<String>;
+    let stderr_lines: Vec<String>;
 
     // Stream stdout
     let app_handle_stdout = app_handle.clone();
@@ -338,18 +329,23 @@ async fn run_python_task(
     });
 
     // Wait for process to complete
-    let child_ref = state.child.clone();
-    let mut child_guard = child_ref.lock().await;
-    let child_mut = child_guard.as_mut().ok_or("Child process disappeared")?;
+    let exit_status = {
+        let child_ref = state.child.clone();
+        let mut child_guard = child_ref.lock().await;
 
-    let exit_status = child_mut
-        .wait()
-        .await
-        .map_err(|error| format!("Failed to wait for process: {error}"))?;
+        if let Some(child_mut) = child_guard.as_mut() {
+            let status = child_mut
+                .wait()
+                .await
+                .map_err(|error| format!("Failed to wait for process: {error}"))?;
 
-    // Clear the stored child process
-    *child_guard = None;
-    drop(child_guard);
+            // Clear the stored child process
+            *child_guard = None;
+            status
+        } else {
+            return Err("Child process was cancelled".to_string());
+        }
+    };
 
     // Wait for all output to be consumed
     stdout_lines = stdout_task
