@@ -266,8 +266,8 @@ def main():
     parser.add_argument(
         "--exclude",
         nargs="*",
-        default=["newgen", "regen"],
-        help="Bundle name patterns to exclude (default: newgen, regen)",
+        default=["ui-newgen-portraits", "regen"],
+        help="Bundle name patterns to exclude (default: ui-newgen-portraits, regen)",
     )
 
     args = parser.parse_args()

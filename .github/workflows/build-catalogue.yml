@@ -23,10 +23,10 @@ on:
         type: number
         default: 10
       exclude_bundles:
-        description: 'Exclude patterns (space-separated, e.g., "newgen regen")'
+        description: 'Exclude patterns (space-separated, e.g., "ui-newgen-portraits regen")'
         required: false
         type: string
-        default: 'newgen regen'
+        default: 'ui-newgen-portraits regen'
 
 env:
   # R2 Configuration
@@ -244,12 +244,5 @@ jobs:
           CATALOGUE_DIR="merged_catalogue/${{ github.event.inputs.fm_version }}-v${{ github.event.inputs.catalogue_version }}"
           if [ -f "$CATALOGUE_DIR/metadata.json" ]; then
             echo "Catalogue Statistics:"
-            cat "$CATALOGUE_DIR/metadata.json" | python -c "
-import sys, json
-data = json.load(sys.stdin)
-print(f\"  Bundles Scanned: {len(data.get('bundles_scanned', []))}\")
-assets = data.get('total_assets', {})
-for asset_type, count in assets.items():
-    print(f\"  {asset_type.replace('_', ' ').title()}: {count}\")
-"
+            cat "$CATALOGUE_DIR/metadata.json" | python3 -c 'import sys, json; data = json.load(sys.stdin); print(f"  Bundles Scanned: {len(data.get(\"bundles_scanned\", []))}"); [print(f"  {k.replace(\"_\", \" \").title()}: {v}") for k, v in data.get("total_assets", {}).items()]'
           fi
