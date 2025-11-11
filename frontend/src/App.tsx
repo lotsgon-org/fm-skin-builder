@@ -99,12 +99,18 @@ function App() {
     console.log('[FRONTEND] Window object:', typeof window);
     console.log('[FRONTEND] Tauri available:', typeof window !== 'undefined' && '__TAURI__' in window);
 
-    let unlistenLog: (() => void) | null = null;
-    let unlistenProgress: (() => void) | null = null;
-    let unlistenComplete: (() => void) | null = null;
-    let unlistenTaskStarted: (() => void) | null = null;
+    // Track if this effect is still mounted (StrictMode safe)
+    let isMounted = true;
     let timeoutId: NodeJS.Timeout | null = null;
     let setupComplete = false;
+
+    // Store unlisten functions in an object to avoid stale closures
+    const unlisteners: {
+      log?: () => void;
+      progress?: () => void;
+      complete?: () => void;
+      taskStarted?: () => void;
+    } = {};
 
     const setupListeners = async () => {
       console.log('[FRONTEND] setupListeners called');
@@ -113,10 +119,16 @@ function App() {
       await new Promise(resolve => setTimeout(resolve, 100));
       console.log('[FRONTEND] After 100ms delay');
 
+      // Check if we're still mounted after delay
+      if (!isMounted) {
+        console.log('[FRONTEND] Component unmounted during delay, aborting listener setup');
+        return;
+      }
+
       try {
         // Listen for task started event
         console.log('[FRONTEND] Setting up task_started listener...');
-        unlistenTaskStarted = await listen<{ message: string }>(
+        unlisteners.taskStarted = await listen<{ message: string }>(
           'task_started',
           (event) => {
             console.log('[FRONTEND] task_started event received:', event.payload);
@@ -131,11 +143,12 @@ function App() {
             ]);
           }
         );
+        if (!isMounted) return; // Check after each async operation
         console.log('[FRONTEND] task_started listener set up');
 
         // Listen for log events
         console.log('[FRONTEND] Setting up build_log listener...');
-        unlistenLog = await listen<{ message: string; level: string }>(
+        unlisteners.log = await listen<{ message: string; level: string }>(
           'build_log',
           (event) => {
             console.log('[FRONTEND] build_log event received:', event.payload.message);
@@ -150,11 +163,12 @@ function App() {
             ]);
           }
         );
+        if (!isMounted) return;
         console.log('[FRONTEND] build_log listener set up');
 
         // Listen for progress events
         console.log('[FRONTEND] Setting up build_progress listener...');
-        unlistenProgress = await listen<{ current: number; total: number; status: string }>(
+        unlisteners.progress = await listen<{ current: number; total: number; status: string }>(
           'build_progress',
           (event) => {
             console.log('[FRONTEND] build_progress event received:', event.payload);
@@ -165,11 +179,12 @@ function App() {
             });
           }
         );
+        if (!isMounted) return;
         console.log('[FRONTEND] build_progress listener set up');
 
         // Listen for completion events
         console.log('[FRONTEND] Setting up build_complete listener...');
-        unlistenComplete = await listen<{ success: boolean; exit_code: number; message: string }>(
+        unlisteners.complete = await listen<{ success: boolean; exit_code: number; message: string }>(
           'build_complete',
           (event) => {
             console.log('[FRONTEND] build_complete event received:', event.payload);
@@ -189,6 +204,7 @@ function App() {
             ]);
           }
         );
+        if (!isMounted) return;
         console.log('[FRONTEND] build_complete listener set up');
         console.log('[FRONTEND] All listeners configured successfully');
       } catch (error) {
@@ -199,7 +215,7 @@ function App() {
 
     // Set a timeout to ensure buttons don't stay disabled forever
     timeoutId = setTimeout(() => {
-      if (!setupComplete) {
+      if (!setupComplete && isMounted) {
         console.warn('[FRONTEND] Listener setup timeout - enabling buttons anyway');
         setListenersReady(true);
       }
@@ -209,12 +225,17 @@ function App() {
     console.log('[FRONTEND] About to call setupListeners...');
     setupListeners()
       .then(() => {
+        if (!isMounted) {
+          console.log('[FRONTEND] Component unmounted, skipping ready state update');
+          return;
+        }
         console.log('[FRONTEND] All event listeners set up successfully');
         setupComplete = true;
         if (timeoutId) clearTimeout(timeoutId);
         setListenersReady(true);
       })
       .catch((error) => {
+        if (!isMounted) return;
         console.error('[FRONTEND] Failed to set up event listeners:', error);
         setupComplete = true;
         if (timeoutId) clearTimeout(timeoutId);
@@ -222,14 +243,16 @@ function App() {
         setListenersReady(true);
       });
 
-    // Cleanup listeners on unmount
+    // Cleanup listeners on unmount (StrictMode safe)
     return () => {
       console.log('[FRONTEND] Cleaning up event listeners');
+      isMounted = false;
       if (timeoutId) clearTimeout(timeoutId);
-      if (unlistenLog) unlistenLog();
-      if (unlistenProgress) unlistenProgress();
-      if (unlistenComplete) unlistenComplete();
-      if (unlistenTaskStarted) unlistenTaskStarted();
+
+      // Clean up all listeners
+      Object.values(unlisteners).forEach(unlisten => {
+        if (unlisten) unlisten();
+      });
     };
   }, []);
 
