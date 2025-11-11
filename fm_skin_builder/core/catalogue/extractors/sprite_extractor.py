@@ -37,7 +37,7 @@ class SpriteExtractor(BaseAssetExtractor):
 
         try:
             env = UnityPy.load(str(bundle_path))
-        except Exception as e:
+        except Exception:
             # If we can't load the bundle, return empty list
             return sprites
 
@@ -89,10 +89,7 @@ class SpriteExtractor(BaseAssetExtractor):
                     for sprite_name, atlas_info in sprite_atlas_map.items():
                         try:
                             sprite_data = self._extract_atlas_sprite(
-                                sprite_name,
-                                atlas_info,
-                                textures_by_pathid,
-                                bundle_name
+                                sprite_name, atlas_info, textures_by_pathid, bundle_name
                             )
                             if sprite_data:
                                 sprites.append(sprite_data)
@@ -108,15 +105,13 @@ class SpriteExtractor(BaseAssetExtractor):
             # Clean up UnityPy environment
             try:
                 del env
-            except:
+            except Exception:
                 pass
             gc.collect()
 
         return sprites
 
-    def _extract_sprite_data(
-        self, sprite_obj: Any, bundle_name: str
-    ) -> Optional[Dict[str, Any]]:
+    def _extract_sprite_data(self, sprite_obj: Any, bundle_name: str) -> Optional[Dict[str, Any]]:
         """
         Extract sprite data and image.
 
@@ -147,7 +142,7 @@ class SpriteExtractor(BaseAssetExtractor):
         try:
             # Sprites reference textures via m_RD.texture
             # We need to get the texture, then crop the sprite's rect from it
-            texture_ref = getattr(sprite_obj, 'm_RD', None)
+            texture_ref = getattr(sprite_obj, "m_RD", None)
             if not texture_ref:
                 return {
                     "name": name,
@@ -160,7 +155,7 @@ class SpriteExtractor(BaseAssetExtractor):
                     **self._create_default_status(),
                 }
 
-            texture = getattr(texture_ref, 'texture', None)
+            texture = getattr(texture_ref, "texture", None)
             if not texture:
                 return {
                     "name": name,
@@ -176,7 +171,7 @@ class SpriteExtractor(BaseAssetExtractor):
             # Read the actual texture object
             try:
                 tex_data = texture.read()
-                tex_format = getattr(tex_data, 'm_TextureFormat', None)
+                tex_format = getattr(tex_data, "m_TextureFormat", None)
 
                 # Skip problematic formats (same as texture extractor)
                 problematic_formats = [48, 49, 50, 51, 52, 53, 34, 45, 46, 47, 26, 30, 31, 32, 33]
@@ -194,9 +189,12 @@ class SpriteExtractor(BaseAssetExtractor):
                     }
 
                 # Also check by name if format is an enum
-                if hasattr(tex_format, 'name'):
+                if hasattr(tex_format, "name"):
                     format_name = tex_format.name
-                    if any(problematic in format_name for problematic in ['ASTC', 'ETC', 'PVRTC', 'BC7']):
+                    if any(
+                        problematic in format_name
+                        for problematic in ["ASTC", "ETC", "PVRTC", "BC7"]
+                    ):
                         return {
                             "name": name,
                             "bundle": bundle_name,
@@ -240,9 +238,7 @@ class SpriteExtractor(BaseAssetExtractor):
                 pil_bottom = min(tex_height, pil_bottom)
 
                 # Crop the sprite from the texture
-                sprite_image = texture_image.crop(
-                    (pil_left, pil_top, pil_right, pil_bottom)
-                )
+                sprite_image = texture_image.crop((pil_left, pil_top, pil_right, pil_bottom))
 
                 # If image is very large, resize to save memory
                 if sprite_image.width > 2048 or sprite_image.height > 2048:
@@ -250,7 +246,7 @@ class SpriteExtractor(BaseAssetExtractor):
 
                 # Convert to PNG bytes
                 buf = io.BytesIO()
-                sprite_image.save(buf, format='PNG')
+                sprite_image.save(buf, format="PNG")
                 image_data = buf.getvalue()
 
                 # Clean up
@@ -291,7 +287,7 @@ class SpriteExtractor(BaseAssetExtractor):
         sprite_name: str,
         atlas_info: Any,
         textures_by_pathid: Dict[int, Any],
-        bundle_name: str
+        bundle_name: str,
     ) -> Optional[Dict[str, Any]]:
         """
         Extract a sprite from a sprite atlas.
@@ -342,13 +338,11 @@ class SpriteExtractor(BaseAssetExtractor):
             pil_bottom = pil_top + rect_height
 
             # Crop the sprite from the atlas
-            sprite_image = atlas_image.crop(
-                (pil_left, pil_top, pil_right, pil_bottom)
-            )
+            sprite_image = atlas_image.crop((pil_left, pil_top, pil_right, pil_bottom))
 
             # Convert to PNG bytes
             buf = io.BytesIO()
-            sprite_image.save(buf, format='PNG')
+            sprite_image.save(buf, format="PNG")
             image_data = buf.getvalue()
 
             return {

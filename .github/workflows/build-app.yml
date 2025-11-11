@@ -77,6 +77,84 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt pyinstaller
 
+      - name: Install Cairo library (Linux)
+        if: matrix.platform == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libcairo2 libcairo2-dev
+
+      - name: Install Cairo library (macOS)
+        if: matrix.platform == 'macos-15-intel'
+        run: |
+          brew install cairo
+
+      - name: Install Cairo library (Windows)
+        if: matrix.platform == 'windows-latest'
+        shell: pwsh
+        run: |
+          # Use MSYS2 to install Cairo (MSYS2 is pre-installed on GitHub Actions Windows runners)
+          C:\msys64\usr\bin\bash.exe -lc "pacman -S --noconfirm mingw-w64-x86_64-cairo"
+
+          # Get Python location
+          $pythonLocation = python -c "import sys; print(sys.prefix)"
+          Write-Host "Python location: $pythonLocation"
+
+          # Create DLLs directory if it doesn't exist
+          $dllsDir = Join-Path $pythonLocation "DLLs"
+          if (-not (Test-Path $dllsDir)) {
+            New-Item -Path $dllsDir -ItemType Directory -Force
+            Write-Host "Created DLLs directory: $dllsDir"
+          }
+
+          # Copy Cairo DLL to Python directory so PyInstaller can find it
+          $cairoDll = "C:\msys64\mingw64\bin\libcairo-2.dll"
+          if (Test-Path $cairoDll) {
+            Copy-Item $cairoDll (Join-Path $dllsDir "libcairo-2.dll") -Force
+            Write-Host "Cairo DLL installed successfully from MSYS2"
+
+            # Also copy all dependent DLLs that Cairo needs
+            $dependencies = @(
+              # Image and graphics
+              "libpng16-16.dll",
+              "libpixman-1-0.dll",
+              # Font libraries
+              "libfreetype-6.dll",
+              "libfontconfig-1.dll",
+              "libharfbuzz-0.dll",
+              "libgraphite2.dll",
+              # Compression
+              "zlib1.dll",
+              "libbz2-1.dll",
+              "libbrotlidec.dll",
+              "libbrotlicommon.dll",
+              # XML and text
+              "libexpat-1.dll",
+              # Character encoding
+              "libiconv-2.dll",
+              "libintl-8.dll",
+              # GLib and deps
+              "libglib-2.0-0.dll",
+              "libpcre2-8-0.dll",
+              "libffi-8.dll",
+              # Runtime libraries
+              "libgcc_s_seh-1.dll",
+              "libstdc++-6.dll",
+              "libwinpthread-1.dll"
+            )
+
+            foreach ($dll in $dependencies) {
+              $sourcePath = "C:\msys64\mingw64\bin\$dll"
+              if (Test-Path $sourcePath) {
+                Copy-Item $sourcePath (Join-Path $dllsDir $dll) -Force -ErrorAction SilentlyContinue
+              }
+            }
+
+            Write-Host "Cairo and dependencies installed to: $dllsDir"
+          } else {
+            Write-Error "Failed to install Cairo from MSYS2"
+            exit 1
+          }
+
       - name: Build backend binary
         shell: bash
         run: |
@@ -87,6 +165,8 @@ jobs:
             --collect-all UnityPy \
             --collect-all cairosvg \
             --collect-all svg.path \
+            --additional-hooks-dir=hooks \
+            --runtime-hook=hooks/rthook_cairocffi.py \
             fm_skin_builder/__main__.py
 
           # Create resources directory

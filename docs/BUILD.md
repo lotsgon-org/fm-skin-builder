@@ -19,6 +19,7 @@ This document describes how to build FM Skin Builder for all platforms and set u
 - **Node.js** 18 or higher ([download](https://nodejs.org/))
 - **Rust** latest stable ([install](https://rustup.rs/))
 - **Python** 3.10 or higher (3.11+ recommended) ([download](https://www.python.org/downloads/))
+- **Cairo Graphics Library** - Required for SVG processing ([setup guide](CAIRO_SETUP.md))
 
 ### Platform-Specific Requirements
 
@@ -44,11 +45,19 @@ Install Xcode Command Line Tools:
 xcode-select --install
 ```
 
+Install Cairo via Homebrew:
+
+```bash
+brew install cairo
+```
+
 #### Windows
 
 Install [Visual Studio Build Tools](https://visualstudio.microsoft.com/downloads/) with the following workloads:
 - "Desktop development with C++"
 - Windows 10/11 SDK
+
+Install Cairo library - see the [detailed Cairo setup guide](CAIRO_SETUP.md#windows) for multiple installation options.
 
 ## Quick Start - Local Build
 

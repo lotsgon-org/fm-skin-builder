@@ -2,8 +2,6 @@
 Test catalogue models.
 """
 
-import pytest
-from datetime import datetime
 
 from fm_skin_builder.core.catalogue.models import (
     AssetStatus,

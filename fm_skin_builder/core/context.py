@@ -69,7 +69,43 @@ class BundleContext:
             return
         if self.auto_backup:
             self._ensure_backup()
-        self._env = self._loader(str(self.bundle_path))
+
+        # Windows network path handling: fsspec has issues with network shares
+        # (mapped drives, UNC paths, WebDAV, etc.)
+        # Read the file with standard Python I/O first, then pass bytes to UnityPy
+        bundle_path_str = str(self.bundle_path)
+        is_network_path = False
+
+        if os.name == 'nt':
+            # Detect network paths:
+            # - UNC paths: \\server\share\...
+            # - Mapped drives (common network letters): P: through Z:
+            # - WebDAV paths containing localhost@
+            if (bundle_path_str.startswith('\\\\') or
+                bundle_path_str[0:1] in 'PQRSTUVWXYZ' and bundle_path_str[1:2] == ':' or
+                'localhost@' in bundle_path_str):
+                is_network_path = True
+
+        if is_network_path:
+            try:
+                # For Windows network paths, read the file into memory and load from bytes
+                # This bypasses fsspec's problematic network path handling
+                with open(self.bundle_path, 'rb') as f:
+                    bundle_data = f.read()
+                # UnityPy can load from bytes directly
+                self._env = UnityPy.load(bundle_data)
+                return
+            except (OSError, IOError) as e:
+                # If reading fails, fall through to try the normal path
+                pass
+
+        # Normal path handling (local files, or if network read failed)
+        bundle_str = str(self.bundle_path)
+        if os.name == 'nt':
+            # On Windows, normalize path separators to forward slashes for fsspec
+            bundle_str = bundle_str.replace('\\', '/')
+
+        self._env = self._loader(bundle_str)
 
     @property
     def env(self) -> UnityPy.Environment:

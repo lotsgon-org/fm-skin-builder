@@ -8,7 +8,6 @@ from __future__ import annotations
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 from datetime import datetime
-from collections import defaultdict
 
 from .extractors import CSSExtractor, SpriteExtractor, TextureExtractor, FontExtractor
 from .models import (
