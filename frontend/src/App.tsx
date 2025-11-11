@@ -80,6 +80,7 @@ function App() {
   const [runtimeState, setRuntimeState] = useState<'unknown' | 'preview' | 'ready'>(
     () => detectTauriRuntime()
   );
+  const [listenersReady, setListenersReady] = useState(false);
 
   const logsEndRef = useRef<HTMLDivElement>(null);
 
@@ -166,7 +167,13 @@ function App() {
       );
     };
 
-    setupListeners();
+    // IMPORTANT: Wait for listeners to be set up before marking ready
+    setupListeners().then(() => {
+      console.log('[FRONTEND] All event listeners set up successfully');
+      setListenersReady(true);
+    }).catch((error) => {
+      console.error('[FRONTEND] Failed to set up event listeners:', error);
+    });
 
     // Cleanup listeners on unmount
     return () => {
@@ -422,11 +429,16 @@ function App() {
                 <div className="flex gap-3 pt-4">
                   <Button
                     onClick={() => runTask('preview')}
-                    disabled={isRunning}
+                    disabled={isRunning || !listenersReady}
                     className="flex-1 gap-2"
                     size="lg"
                   >
-                    {isRunning && currentTask === 'Previewing Build' ? (
+                    {!listenersReady ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Initializing...
+                      </>
+                    ) : isRunning && currentTask === 'Previewing Build' ? (
                       <>
                         <Loader2 className="h-4 w-4 animate-spin" />
                         Running...
@@ -440,12 +452,17 @@ function App() {
                   </Button>
                   <Button
                     onClick={() => runTask('build')}
-                    disabled={isRunning}
+                    disabled={isRunning || !listenersReady}
                     variant="secondary"
                     className="flex-1 gap-2"
                     size="lg"
                   >
-                    {isRunning && currentTask === 'Building Bundles' ? (
+                    {!listenersReady ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Initializing...
+                      </>
+                    ) : isRunning && currentTask === 'Building Bundles' ? (
                       <>
                         <Loader2 className="h-4 w-4 animate-spin" />
                         Running...
