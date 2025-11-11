@@ -2,15 +2,19 @@
 Sprite Extractor
 
 Extracts sprite/icon assets from Unity bundles with image data and metadata.
+Handles both standalone sprites and sprites from sprite atlases.
 """
 
 from __future__ import annotations
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 import UnityPy
+from PIL import Image
+import io
 
 from .base import BaseAssetExtractor
 from ..models import Sprite
+from ...textures import _parse_sprite_atlas
 
 
 class SpriteExtractor(BaseAssetExtractor):
@@ -40,6 +44,7 @@ class SpriteExtractor(BaseAssetExtractor):
         bundle_name = bundle_path.name
 
         try:
+            # Extract standalone sprites
             for obj in env.objects:
                 if obj.type.name != "Sprite":
                     continue
@@ -62,31 +67,43 @@ class SpriteExtractor(BaseAssetExtractor):
                     # Skip problematic sprites
                     continue
 
-            # Also check SpriteAtlas
-            for obj in env.objects:
-                if obj.type.name != "SpriteAtlas":
-                    continue
+            # Extract sprites from sprite atlases
+            try:
+                sprite_atlas_map = _parse_sprite_atlas(env)
 
-                try:
-                    data = obj.read()
-                except Exception:
-                    continue
+                if sprite_atlas_map:
+                    # Build texture cache
+                    textures_by_pathid: Dict[int, Any] = {}
+                    for obj in env.objects:
+                        if obj.type.name == "Texture2D":
+                            try:
+                                tex = obj.read()
+                                path_id = obj.path_id
+                                if path_id < 0:
+                                    path_id = path_id & 0xFFFFFFFFFFFFFFFF
+                                textures_by_pathid[path_id] = tex
+                            except Exception:
+                                pass
 
-                atlas_name = self._get_asset_name(data) or "UnnamedAtlas"
-                packed_names = getattr(data, "m_PackedSpriteNamesToIndex", None)
+                    # Extract each sprite from atlas
+                    for sprite_name, atlas_info in sprite_atlas_map.items():
+                        try:
+                            sprite_data = self._extract_atlas_sprite(
+                                sprite_name,
+                                atlas_info,
+                                textures_by_pathid,
+                                bundle_name
+                            )
+                            if sprite_data:
+                                sprites.append(sprite_data)
+                        except Exception:
+                            # Skip problematic atlas sprites
+                            continue
 
-                if packed_names:
-                    for sprite_name in list(packed_names):
-                        if sprite_name:
-                            # Mark this as from an atlas
-                            sprites.append({
-                                "name": str(sprite_name),
-                                "atlas": atlas_name,
-                                "bundle": bundle_name,
-                                "has_vertex_data": False,  # Atlas sprites typically don't
-                                "image_data": None,  # Atlas sprites need special handling
-                                **self._create_default_status(),
-                            })
+            except Exception as e:
+                # If atlas parsing fails, continue with what we have
+                pass
+
         finally:
             # Clean up UnityPy environment
             try:
@@ -179,8 +196,6 @@ class SpriteExtractor(BaseAssetExtractor):
             if image:
                 # For large images, convert to thumbnail immediately to save memory
                 # Don't store full 4K+ images in memory
-                from PIL import Image
-                import io
 
                 # Create a copy to avoid modifying original
                 img_copy = image.copy()
@@ -213,6 +228,95 @@ class SpriteExtractor(BaseAssetExtractor):
             "atlas": None,
             **self._create_default_status(),
         }
+
+    def _extract_atlas_sprite(
+        self,
+        sprite_name: str,
+        atlas_info: Any,
+        textures_by_pathid: Dict[int, Any],
+        bundle_name: str
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Extract a sprite from a sprite atlas.
+
+        Args:
+            sprite_name: Name of the sprite
+            atlas_info: SpriteAtlasInfo with texture reference and coordinates
+            textures_by_pathid: Cache of loaded textures
+            bundle_name: Name of the bundle
+
+        Returns:
+            Dictionary with sprite metadata and cropped image data
+        """
+        # Get the atlas texture
+        atlas_tex = textures_by_pathid.get(atlas_info.texture_path_id)
+        if not atlas_tex:
+            # Texture not found, return sprite without image
+            return {
+                "name": sprite_name,
+                "bundle": bundle_name,
+                "has_vertex_data": False,
+                "width": atlas_info.rect_width,
+                "height": atlas_info.rect_height,
+                "image_data": None,
+                "atlas": atlas_info.atlas_name,
+                **self._create_default_status(),
+            }
+
+        try:
+            # Get the atlas as a PIL image
+            atlas_image = atlas_tex.image
+            if not atlas_image:
+                return None
+
+            atlas_width = atlas_image.width
+            atlas_height = atlas_image.height
+
+            # Extract sprite rect from atlas info
+            rect_x = atlas_info.rect_x
+            rect_y = atlas_info.rect_y
+            rect_width = atlas_info.rect_width
+            rect_height = atlas_info.rect_height
+
+            # Convert Unity bottom-left origin to PIL top-left origin
+            pil_top = atlas_height - (rect_y + rect_height)
+            pil_left = rect_x
+            pil_right = rect_x + rect_width
+            pil_bottom = pil_top + rect_height
+
+            # Crop the sprite from the atlas
+            sprite_image = atlas_image.crop(
+                (pil_left, pil_top, pil_right, pil_bottom)
+            )
+
+            # Convert to PNG bytes
+            buf = io.BytesIO()
+            sprite_image.save(buf, format='PNG')
+            image_data = buf.getvalue()
+
+            return {
+                "name": sprite_name,
+                "bundle": bundle_name,
+                "has_vertex_data": False,
+                "width": rect_width,
+                "height": rect_height,
+                "image_data": image_data,
+                "atlas": atlas_info.atlas_name,
+                **self._create_default_status(),
+            }
+
+        except Exception as e:
+            # Failed to extract image, return sprite metadata without image
+            return {
+                "name": sprite_name,
+                "bundle": bundle_name,
+                "has_vertex_data": False,
+                "width": atlas_info.rect_width,
+                "height": atlas_info.rect_height,
+                "image_data": None,
+                "atlas": atlas_info.atlas_name,
+                **self._create_default_status(),
+            }
 
     def _has_vertex_data(self, sprite_obj: Any) -> bool:
         """
