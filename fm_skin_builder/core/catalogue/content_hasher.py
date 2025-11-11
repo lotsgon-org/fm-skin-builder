@@ -20,7 +20,7 @@ def compute_hash(data: Union[bytes, str]) -> str:
         Hex string of SHA256 hash
     """
     if isinstance(data, str):
-        data = data.encode('utf-8')
+        data = data.encode("utf-8")
 
     return hashlib.sha256(data).hexdigest()
 
@@ -37,7 +37,7 @@ def compute_file_hash(file_path: str) -> str:
     """
     hasher = hashlib.sha256()
 
-    with open(file_path, 'rb') as f:
+    with open(file_path, "rb") as f:
         while True:
             chunk = f.read(8192)
             if not chunk:

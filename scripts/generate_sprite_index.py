@@ -15,7 +15,9 @@ from typing import List, Dict
 import html
 
 
-def generate_html_index(sprite_dir: Path, output_file: Path, title: str = "Sprite Index"):
+def generate_html_index(
+    sprite_dir: Path, output_file: Path, title: str = "Sprite Index"
+):
     """Generate an HTML index file for browsing sprites.
 
     Args:
@@ -27,8 +29,11 @@ def generate_html_index(sprite_dir: Path, output_file: Path, title: str = "Sprit
     sprites_by_scale: Dict[str, List[Path]] = {}
 
     # Check if there are scale subdirectories (1x, 2x, 3x, 4x)
-    scale_dirs = [d for d in sprite_dir.iterdir() if d.is_dir() and d.name in [
-        '1x', '2x', '3x', '4x']]
+    scale_dirs = [
+        d
+        for d in sprite_dir.iterdir()
+        if d.is_dir() and d.name in ["1x", "2x", "3x", "4x"]
+    ]
 
     if scale_dirs:
         # Organized by scale
@@ -265,7 +270,7 @@ def generate_html_index(sprite_dir: Path, output_file: Path, title: str = "Sprit
 
     # Write HTML file
     output_file.parent.mkdir(parents=True, exist_ok=True)
-    output_file.write_text(html_content, encoding='utf-8')
+    output_file.write_text(html_content, encoding="utf-8")
     print(f"✓ Generated HTML index: {output_file}")
     print(f"  Open in browser: file://{output_file.absolute()}")
 
@@ -279,19 +284,17 @@ def main():
         "-i",
         type=Path,
         required=True,
-        help="Directory containing extracted sprites"
+        help="Directory containing extracted sprites",
     )
     parser.add_argument(
         "--output",
         "-o",
         type=Path,
         default=Path("sprite_index.html"),
-        help="Output HTML file path (default: sprite_index.html)"
+        help="Output HTML file path (default: sprite_index.html)",
     )
     parser.add_argument(
-        "--title",
-        default="FM Sprite Index",
-        help="Title for the HTML page"
+        "--title", default="FM Sprite Index", help="Title for the HTML page"
     )
 
     args = parser.parse_args()

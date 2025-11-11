@@ -33,15 +33,17 @@ def get_bundle_base_name(bundle_path: str) -> str:
         skins.bundle -> skins
     """
     # Get filename without path
-    filename = bundle_path.split('/')[-1]
+    filename = bundle_path.split("/")[-1]
     # Remove .bundle extension
-    name = filename.replace('.bundle', '')
+    name = filename.replace(".bundle", "")
     # Remove scale suffixes: _1x, _2x, _3x, _4x, @1x, @2x, etc.
-    base = re.sub(r'[_@]\d+x$', '', name)
+    base = re.sub(r"[_@]\d+x$", "", name)
     return base
 
 
-def group_related_bundles(bundle_keys: List[str], exclude_patterns: List[str]) -> List[List[str]]:
+def group_related_bundles(
+    bundle_keys: List[str], exclude_patterns: List[str]
+) -> List[List[str]]:
     """
     Group related bundles together (e.g., scale variants).
     Excludes bundles matching exclude patterns.
@@ -78,14 +80,15 @@ def group_related_bundles(bundle_keys: List[str], exclude_patterns: List[str]) -
 
     # Convert to list of groups, sorted for determinism
     bundle_groups = [
-        sorted(bundles)
-        for bundles in sorted(groups_dict.values(), key=lambda x: x[0])
+        sorted(bundles) for bundles in sorted(groups_dict.values(), key=lambda x: x[0])
     ]
 
     return bundle_groups
 
 
-def distribute_to_groups(bundle_groups: List[List[str]], num_groups: int) -> List[List[str]]:
+def distribute_to_groups(
+    bundle_groups: List[List[str]], num_groups: int
+) -> List[List[str]]:
     """
     Distribute bundle groups across N groups, trying to balance the load.
 
@@ -112,10 +115,7 @@ def distribute_to_groups(bundle_groups: List[List[str]], num_groups: int) -> Lis
 
 
 def list_and_split_bundles(
-    prefix: str,
-    num_groups: int,
-    output_dir: Path,
-    exclude_patterns: List[str]
+    prefix: str, num_groups: int, output_dir: Path, exclude_patterns: List[str]
 ):
     """
     List bundles from R2 and split into groups.
@@ -187,7 +187,7 @@ def list_and_split_bundles(
     for i, group in enumerate(bundle_groups[:5]):
         if len(group) > 1:
             base = get_bundle_base_name(group[0])
-            scales = [b.split('/')[-1] for b in group]
+            scales = [b.split("/")[-1] for b in group]
             print(f"  {base}: {', '.join(scales)}")
     if len(bundle_groups) > 5:
         print(f"  ... and {len(bundle_groups) - 5} more groups")
@@ -222,8 +222,7 @@ def list_and_split_bundles(
         "num_groups": len(groups),
         "excluded_patterns": exclude_patterns,
         "groups": [
-            {"group_id": i, "bundle_count": len(g)}
-            for i, g in enumerate(groups)
+            {"group_id": i, "bundle_count": len(g)} for i, g in enumerate(groups)
         ],
     }
 
@@ -271,12 +270,7 @@ def main():
     )
 
     args = parser.parse_args()
-    list_and_split_bundles(
-        args.prefix,
-        args.groups,
-        args.output,
-        args.exclude
-    )
+    list_and_split_bundles(args.prefix, args.groups, args.output, args.exclude)
 
 
 if __name__ == "__main__":

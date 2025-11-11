@@ -76,50 +76,45 @@ class CatalogueExporter:
 
         # Export metadata
         self._write_json(
-            self.output_dir / "metadata.json",
-            metadata.model_dump(mode='json')
+            self.output_dir / "metadata.json", metadata.model_dump(mode="json")
         )
 
         # Export CSS variables
         self._write_json(
             self.output_dir / "css-variables.json",
-            [v.model_dump(mode='json') for v in css_variables]
+            [v.model_dump(mode="json") for v in css_variables],
         )
 
         # Export CSS classes
         self._write_json(
             self.output_dir / "css-classes.json",
-            [c.model_dump(mode='json') for c in css_classes]
+            [c.model_dump(mode="json") for c in css_classes],
         )
 
         # Export sprites
         self._write_json(
             self.output_dir / "sprites.json",
-            [s.model_dump(mode='json') for s in sprites]
+            [s.model_dump(mode="json") for s in sprites],
         )
 
         # Export textures
         self._write_json(
             self.output_dir / "textures.json",
-            [t.model_dump(mode='json') for t in textures]
+            [t.model_dump(mode="json") for t in textures],
         )
 
         # Export fonts
         self._write_json(
-            self.output_dir / "fonts.json",
-            [f.model_dump(mode='json') for f in fonts]
+            self.output_dir / "fonts.json", [f.model_dump(mode="json") for f in fonts]
         )
 
         # Export search index
-        self._write_json(
-            self.output_dir / "search-index.json",
-            search_index
-        )
+        self._write_json(self.output_dir / "search-index.json", search_index)
 
     def _write_json(self, path: Path, data: Any) -> None:
         """Write data to JSON file."""
         indent = 2 if self.pretty else None
-        with open(path, 'w', encoding='utf-8') as f:
+        with open(path, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=indent)
 
 

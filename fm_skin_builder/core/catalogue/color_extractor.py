@@ -12,14 +12,13 @@ from io import BytesIO
 
 try:
     from sklearn.cluster import KMeans
+
     SKLEARN_AVAILABLE = True
 except ImportError:
     SKLEARN_AVAILABLE = False
 
 
-def extract_dominant_colors(
-    image_data: bytes, num_colors: int = 5
-) -> List[str]:
+def extract_dominant_colors(image_data: bytes, num_colors: int = 5) -> List[str]:
     """
     Extract dominant colors from an image using K-means clustering.
 
@@ -36,7 +35,7 @@ def extract_dominant_colors(
 
     try:
         # Load image
-        img = Image.open(BytesIO(image_data)).convert('RGB')
+        img = Image.open(BytesIO(image_data)).convert("RGB")
 
         # Resize for faster processing
         img = img.resize((150, 150))
@@ -48,7 +47,9 @@ def extract_dominant_colors(
         # (to avoid watermark colors dominating)
 
         # K-means clustering
-        kmeans = KMeans(n_clusters=min(num_colors, len(pixels)), random_state=42, n_init=10)
+        kmeans = KMeans(
+            n_clusters=min(num_colors, len(pixels)), random_state=42, n_init=10
+        )
         kmeans.fit(pixels)
 
         # Get cluster centers (dominant colors)
@@ -61,10 +62,7 @@ def extract_dominant_colors(
         sorted_colors = [colors[i] for i in sorted_indices]
 
         # Convert to hex
-        hex_colors = [
-            f"#{r:02x}{g:02x}{b:02x}"
-            for r, g, b in sorted_colors
-        ]
+        hex_colors = [f"#{r:02x}{g:02x}{b:02x}" for r, g, b in sorted_colors]
 
         return hex_colors[:num_colors]
 
@@ -86,7 +84,7 @@ def _extract_simple_colors(image_data: bytes, num_colors: int) -> List[str]:
         List of hex color strings
     """
     try:
-        img = Image.open(BytesIO(image_data)).convert('RGB')
+        img = Image.open(BytesIO(image_data)).convert("RGB")
         img = img.resize((100, 100))
 
         pixels = list(img.getdata())
@@ -116,7 +114,7 @@ def calculate_brightness(image_data: bytes) -> float:
         Brightness value (0.0-1.0)
     """
     try:
-        img = Image.open(BytesIO(image_data)).convert('L')  # Convert to grayscale
+        img = Image.open(BytesIO(image_data)).convert("L")  # Convert to grayscale
         img = img.resize((50, 50))  # Small size for speed
 
         pixels = np.array(img)

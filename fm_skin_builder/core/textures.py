@@ -1,6 +1,16 @@
 from __future__ import annotations
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, DefaultDict, NamedTuple, Iterable, Set
+from typing import (
+    Any,
+    Dict,
+    List,
+    Optional,
+    Tuple,
+    DefaultDict,
+    NamedTuple,
+    Iterable,
+    Set,
+)
 from collections import defaultdict
 import os
 from io import BytesIO
@@ -16,7 +26,9 @@ from .logger import get_logger
 log = get_logger(__name__)
 
 
-def _svg_to_png_bytes(svg_path: Path, width: int = 512, height: int = 512) -> Optional[bytes]:
+def _svg_to_png_bytes(
+    svg_path: Path, width: int = 512, height: int = 512
+) -> Optional[bytes]:
     """Convert an SVG file to PNG bytes, preferring cairosvg with fallbacks."""
 
     try:
@@ -61,8 +73,7 @@ def _svg_to_png_bytes(svg_path: Path, width: int = 512, height: int = 512) -> Op
             # svglib/reportlab not installed; try next fallback for SVG conversion
             pass
         except Exception as exc:
-            log.debug(
-                f"[VECTOR] svglib conversion failed for {svg_path}: {exc}")
+            log.debug(f"[VECTOR] svglib conversion failed for {svg_path}: {exc}")
 
         try:
             from PIL import Image  # type: ignore
@@ -135,7 +146,7 @@ def _strip_image_extension(name: str) -> Tuple[str, Optional[str]]:
     n = name
     for ext in (".png", ".jpg", ".jpeg", ".PNG", ".JPG", ".JPEG"):
         if n.endswith(ext):
-            return n[: -len(ext)], ext.lower().lstrip('.')
+            return n[: -len(ext)], ext.lower().lstrip(".")
     return n, None
 
 
@@ -164,6 +175,7 @@ def _parse_base_and_scale(name: str) -> Tuple[str, int]:
 
 class SpriteAtlasInfo(NamedTuple):
     """Information about a sprite in an atlas."""
+
     sprite_name: str
     sprite_index: int
     sprite_path_id: int
@@ -199,8 +211,11 @@ def _parse_sprite_atlas(env) -> Dict[str, SpriteAtlasInfo]:
             log.debug(f"[ATLAS] Failed to read SpriteAtlas: {e}")
             continue
 
-        atlas_name = getattr(atlas_data, "m_Name", None) or getattr(
-            atlas_data, "name", None) or "Unknown"
+        atlas_name = (
+            getattr(atlas_data, "m_Name", None)
+            or getattr(atlas_data, "name", None)
+            or "Unknown"
+        )
 
         # Step 1: Parse m_PackedSpriteNamesToIndex (list of sprite names, index = position)
         packed_names = getattr(atlas_data, "m_PackedSpriteNamesToIndex", None)
@@ -229,7 +244,8 @@ def _parse_sprite_atlas(env) -> Dict[str, SpriteAtlasInfo]:
             # Verify lengths match
             if not (len(sprite_names_list) == len(sprites_list) == len(render_list)):
                 log.warning(
-                    f"[ATLAS] Length mismatch in {atlas_name}: names={len(sprite_names_list)}, sprites={len(sprites_list)}, render={len(render_list)}")
+                    f"[ATLAS] Length mismatch in {atlas_name}: names={len(sprite_names_list)}, sprites={len(sprites_list)}, render={len(render_list)}"
+                )
                 continue
 
             # Process each sprite by index
@@ -254,26 +270,32 @@ def _parse_sprite_atlas(env) -> Dict[str, SpriteAtlasInfo]:
 
                     # Extract textureRect (lowercase in UnityPy)
                     texture_rect = getattr(value, "textureRect", None) or getattr(
-                        value, "m_TextureRect", None)
+                        value, "m_TextureRect", None
+                    )
                     if texture_rect is None:
                         continue
 
                     # Get rectangle coordinates (may be floats)
                     rect_x = getattr(texture_rect, "x", None) or getattr(
-                        texture_rect, "m_X", None)
+                        texture_rect, "m_X", None
+                    )
                     rect_y = getattr(texture_rect, "y", None) or getattr(
-                        texture_rect, "m_Y", None)
+                        texture_rect, "m_Y", None
+                    )
                     rect_width = getattr(texture_rect, "width", None) or getattr(
-                        texture_rect, "m_Width", None)
+                        texture_rect, "m_Width", None
+                    )
                     rect_height = getattr(texture_rect, "height", None) or getattr(
-                        texture_rect, "m_Height", None)
+                        texture_rect, "m_Height", None
+                    )
 
                     if None in (rect_x, rect_y, rect_width, rect_height):
                         continue
 
                     # Extract texture pointer to get Texture2D path_id (lowercase in UnityPy)
                     texture_ptr = getattr(value, "texture", None) or getattr(
-                        value, "m_Texture", None)
+                        value, "m_Texture", None
+                    )
                     if texture_ptr is None:
                         continue
 
@@ -292,22 +314,23 @@ def _parse_sprite_atlas(env) -> Dict[str, SpriteAtlasInfo]:
                         sprite_index=idx,
                         sprite_path_id=sprite_path_id,
                         texture_path_id=texture_path_id,
-                        texture_file_id=texture_file_id if isinstance(
-                            texture_file_id, int) else None,
+                        texture_file_id=texture_file_id
+                        if isinstance(texture_file_id, int)
+                        else None,
                         rect_x=int(round(rect_x)),
                         rect_y=int(round(rect_y)),
                         rect_width=int(round(rect_width)),
                         rect_height=int(round(rect_height)),
-                        atlas_name=atlas_name
+                        atlas_name=atlas_name,
                     )
                 except Exception as e:
-                    log.debug(
-                        f"[ATLAS] Failed to parse sprite at index {idx}: {e}")
+                    log.debug(f"[ATLAS] Failed to parse sprite at index {idx}: {e}")
                     continue
 
             if sprite_atlas_map:
                 log.info(
-                    f"[ATLAS] Parsed SpriteAtlas '{atlas_name}' with {len([s for s in sprite_atlas_map.values() if s.atlas_name == atlas_name])} sprites")
+                    f"[ATLAS] Parsed SpriteAtlas '{atlas_name}' with {len([s for s in sprite_atlas_map.values() if s.atlas_name == atlas_name])} sprites"
+                )
 
         except Exception as e:
             log.debug(f"[ATLAS] Failed to process {atlas_name}: {e}")
@@ -335,7 +358,16 @@ def _derive_sprite_bundle_candidates(bundle_name: str) -> List[str]:
             candidates.add(stem.replace(old, new) + ext)
 
     # Insert _sprites before scale suffixes as fallback
-    for suffix in ("_1x", "_2x", "_3x", "_4x", "_assets_1x", "_assets_2x", "_assets_3x", "_assets_4x"):
+    for suffix in (
+        "_1x",
+        "_2x",
+        "_3x",
+        "_4x",
+        "_assets_1x",
+        "_assets_2x",
+        "_assets_3x",
+        "_assets_4x",
+    ):
         if stem.endswith(suffix):
             prefix = stem[: -len(suffix)]
             candidates.add(prefix + "_sprites" + suffix + ext)
@@ -427,8 +459,10 @@ def _read_svg_path_commands(svg_file: Path) -> Optional[str]:
         coords = re.findall(r"[-+]?\d*\.?\d+(?:[eE][-+]?\d+)?", points_attr)
         if len(coords) < 4 or len(coords) % 2 != 0:
             return None
-        pairs = [(_fmt(float(coords[i])), _fmt(float(coords[i + 1])))
-                 for i in range(0, len(coords), 2)]
+        pairs = [
+            (_fmt(float(coords[i])), _fmt(float(coords[i + 1])))
+            for i in range(0, len(coords), 2)
+        ]
         if len(pairs) < 2:
             return None
         path = [f"M {pairs[0][0]} {pairs[0][1]}"]
@@ -438,7 +472,7 @@ def _read_svg_path_commands(svg_file: Path) -> Optional[str]:
         return " ".join(path)
 
     for elem in root.iter():
-        tag = elem.tag.split('}', 1)[-1] if '}' in elem.tag else elem.tag
+        tag = elem.tag.split("}", 1)[-1] if "}" in elem.tag else elem.tag
         tag_lower = tag.lower()
         path_cmd: Optional[str] = None
         if tag_lower == "path":
@@ -490,11 +524,11 @@ def _coerce_vector_color(value: Any) -> Optional[Tuple[int, int, int, int]]:
         else:
             match = re.match(r"rgba?\(([^)]+)\)", v, re.IGNORECASE)
             if match:
-                parts = [p.strip() for p in match.group(1).split(',')]
+                parts = [p.strip() for p in match.group(1).split(",")]
                 if len(parts) in {3, 4}:
                     comps: List[float] = []
                     for idx, comp in enumerate(parts):
-                        if comp.endswith('%'):
+                        if comp.endswith("%"):
                             comps.append(float(comp[:-1]) * 2.55)
                         else:
                             try:
@@ -565,11 +599,14 @@ def _resolve_svg_path(
             return resolved
 
     log.warning(
-        f"[VECTOR] SVG file not found: {svg_value} (searched: {[str(c) for c in candidates]})")
+        f"[VECTOR] SVG file not found: {svg_value} (searched: {[str(c) for c in candidates]})"
+    )
     return None
 
 
-def _normalise_vector_config(config: Dict[str, Any], skin_root: Optional[Path]) -> Optional[Dict[str, Any]]:
+def _normalise_vector_config(
+    config: Dict[str, Any], skin_root: Optional[Path]
+) -> Optional[Dict[str, Any]]:
     """Prepare vector replacement config, resolving files and colours."""
 
     if not isinstance(config, dict):
@@ -641,8 +678,7 @@ def _render_vector_config_to_png(
         elif shape == "square":
             draw.rectangle([(0, 0), (width, height)], fill=fill)
         else:
-            log.warning(
-                "[VECTOR] Unable to rasterise custom vector without SVG source")
+            log.warning("[VECTOR] Unable to rasterise custom vector without SVG source")
             return None
 
         buf = BytesIO()
@@ -672,8 +708,7 @@ def apply_dynamic_sprite_rebinds(env, jobs: Iterable[DynamicSpriteRebind]) -> in
             data = obj.read()
         except Exception:
             continue
-        sprite_name = getattr(data, "m_Name", None) or getattr(
-            data, "name", None)
+        sprite_name = getattr(data, "m_Name", None) or getattr(data, "name", None)
         if not sprite_name:
             continue
         job = jobs_by_name.get(str(sprite_name).lower())
@@ -682,8 +717,7 @@ def apply_dynamic_sprite_rebinds(env, jobs: Iterable[DynamicSpriteRebind]) -> in
         rd = getattr(data, "m_RD", None)
         texture_ptr = None
         if rd is not None:
-            texture_ptr = getattr(rd, "texture", None) or getattr(
-                rd, "m_Texture", None)
+            texture_ptr = getattr(rd, "texture", None) or getattr(rd, "m_Texture", None)
         if texture_ptr is None:
             texture_ptr = getattr(data, "m_Texture", None)
         if texture_ptr is None:
@@ -723,8 +757,7 @@ def _swap_textures_in_env(
     if not replacements and not has_vector_configs:
         return TextureSwapInternalResult(0, {})
 
-    dynamic_jobs: DefaultDict[str,
-                              List[DynamicSpriteRebind]] = defaultdict(list)
+    dynamic_jobs: DefaultDict[str, List[DynamicSpriteRebind]] = defaultdict(list)
     current_bundle_key = bundle_path.name.lower() if bundle_path else None
     candidate_sprite_keys: List[str] = []
     if bundle_path is not None:
@@ -738,8 +771,7 @@ def _swap_textures_in_env(
     # Group env textures by base name and scale
     env_by_base: DefaultDict[str, Dict[int, object]] = defaultdict(dict)
     env_exts: DefaultDict[str, Dict[int, Optional[str]]] = defaultdict(dict)
-    env_pid_by_base: DefaultDict[str,
-                                 Dict[int, Optional[int]]] = defaultdict(dict)
+    env_pid_by_base: DefaultDict[str, Dict[int, Optional[int]]] = defaultdict(dict)
     tex_by_pathid: Dict[int, Tuple[str, int, object]] = {}
     for obj in getattr(env, "objects", []):
         if getattr(getattr(obj, "type", None), "name", None) != "Texture2D":
@@ -760,8 +792,7 @@ def _swap_textures_in_env(
         path_id = getattr(obj, "path_id", None)
         if isinstance(path_id, int):
             tex_by_pathid[path_id] = (base, scale, data)
-        env_pid_by_base[base][scale] = path_id if isinstance(
-            path_id, int) else None
+        env_pid_by_base[base][scale] = path_id if isinstance(path_id, int) else None
 
     # Collect alias mappings from AssetBundle containers and Sprites to Texture2D path IDs
     alias_entries: List[Tuple[str, int]] = []  # (alias_name, target_path_id)
@@ -781,9 +812,11 @@ def _swap_textures_in_env(
                 for entry in list(container):
                     # Try common shapes: entry.first (name) + entry.second (PPtr), or entry.name + entry.asset
                     alias = getattr(entry, "first", None) or getattr(
-                        entry, "name", None)
+                        entry, "name", None
+                    )
                     asset = getattr(entry, "second", None) or getattr(
-                        entry, "asset", None)
+                        entry, "asset", None
+                    )
                     if alias and asset is not None:
                         pid = getattr(asset, "m_PathID", None)
                         if isinstance(pid, int):
@@ -795,22 +828,24 @@ def _swap_textures_in_env(
                 data = obj.read()
             except Exception:
                 continue
-            alias = getattr(data, "m_Name", None) or getattr(
-                data, "name", None)
+            alias = getattr(data, "m_Name", None) or getattr(data, "name", None)
             if not alias:
                 continue
             pid = None
             try:
                 # Common location of texture PPtr in UnityPy Sprite
                 rd = getattr(data, "m_RD", None)
-                tex_ptr = getattr(
-                    rd, "texture", None) if rd is not None else None
-                pid = getattr(tex_ptr, "m_PathID",
-                              None) if tex_ptr is not None else None
+                tex_ptr = getattr(rd, "texture", None) if rd is not None else None
+                pid = (
+                    getattr(tex_ptr, "m_PathID", None) if tex_ptr is not None else None
+                )
                 if pid is None:
                     tex_ptr = getattr(data, "m_Texture", None)
-                    pid = getattr(tex_ptr, "m_PathID",
-                                  None) if tex_ptr is not None else None
+                    pid = (
+                        getattr(tex_ptr, "m_PathID", None)
+                        if tex_ptr is not None
+                        else None
+                    )
             except Exception:
                 pid = None
             if isinstance(pid, int):
@@ -832,8 +867,7 @@ def _swap_textures_in_env(
 
     # Build source replacements by base/scale from files
     src_by_base: DefaultDict[str, Dict[int, bytes]] = defaultdict(dict)
-    src_ext_by_base: DefaultDict[str,
-                                 Dict[int, Optional[str]]] = defaultdict(dict)
+    src_ext_by_base: DefaultDict[str, Dict[int, Optional[str]]] = defaultdict(dict)
     for repl_name, buf in replacements.items():
         sbase, sscale = _parse_base_and_scale(repl_name)
         src_by_base[sbase][sscale] = buf
@@ -842,8 +876,7 @@ def _swap_textures_in_env(
 
     # Plan final replacements (target_base/scale -> bytes) considering mapping (target→source only)
     repl_by_base: DefaultDict[str, Dict[int, bytes]] = defaultdict(dict)
-    repl_ext_by_base: DefaultDict[str,
-                                  Dict[int, Optional[str]]] = defaultdict(dict)
+    repl_ext_by_base: DefaultDict[str, Dict[int, Optional[str]]] = defaultdict(dict)
     used_sources: set = set()
     if name_map:
         # Mapping: target_base(±variant) -> source_base
@@ -858,16 +891,21 @@ def _swap_textures_in_env(
             if tscale != 1:
                 if tscale in s_scales:
                     repl_by_base[tbase][tscale] = s_scales[tscale]
-                    if repl_exts is not None and tscale in src_ext_by_base.get(sbase, {}):
+                    if repl_exts is not None and tscale in src_ext_by_base.get(
+                        sbase, {}
+                    ):
                         repl_ext_by_base[tbase][tscale] = src_ext_by_base[sbase][tscale]
                     used_sources.add((sbase, tscale))
                 else:
                     log.warning(
-                        f"[TEXTURE] Mapping for '{tkey}' requested {tscale}x but no replacement scale found for source '{sbase}'.")
+                        f"[TEXTURE] Mapping for '{tkey}' requested {tscale}x but no replacement scale found for source '{sbase}'."
+                    )
             else:
                 for sscale, buf in s_scales.items():
                     repl_by_base[tbase][sscale] = buf
-                    if repl_exts is not None and sscale in src_ext_by_base.get(sbase, {}):
+                    if repl_exts is not None and sscale in src_ext_by_base.get(
+                        sbase, {}
+                    ):
                         repl_ext_by_base[tbase][sscale] = src_ext_by_base[sbase][sscale]
                     used_sources.add((sbase, sscale))
 
@@ -906,31 +944,37 @@ def _swap_textures_in_env(
             if data is None:
                 # Replacement exists for variant that bundle doesn't have
                 log.debug(
-                    f"[TEXTURE] No matching asset variant for '{base}' at {scale}x; ignoring replacement.")
+                    f"[TEXTURE] No matching asset variant for '{base}' at {scale}x; ignoring replacement."
+                )
                 continue
             # Block atlas replacements: if this texture appears to be shared by multiple Sprites
             pid = env_pid_by_base.get(base, {}).get(scale)
             if isinstance(pid, int) and sprite_refs_by_pid.get(pid, 0) > 1:
                 log.error(
-                    f"[TEXTURE] Replacement blocked: target '{base}' at {scale}x is shared by {sprite_refs_by_pid[pid]} sprites (atlas). Atlas replacement is not supported yet.")
+                    f"[TEXTURE] Replacement blocked: target '{base}' at {scale}x is shared by {sprite_refs_by_pid[pid]} sprites (atlas). Atlas replacement is not supported yet."
+                )
                 continue
             try:
                 # Prefer PIL path for set_image when available
                 used_pil = False
                 try:
                     from PIL import Image  # type: ignore
+
                     used_pil = True
                 except Exception:
                     used_pil = False
 
                 if used_pil and hasattr(data, "set_image"):
                     from PIL import Image  # type: ignore
+
                     img = Image.open(BytesIO(buf))
                     # Size validation (warn on mismatch)
                     tgt_w = getattr(data, "m_Width", None) or getattr(
-                        data, "width", None)
+                        data, "width", None
+                    )
                     tgt_h = getattr(data, "m_Height", None) or getattr(
-                        data, "height", None)
+                        data, "height", None
+                    )
                     if isinstance(tgt_w, int) and isinstance(tgt_h, int):
                         try:
                             rw, rh = img.size
@@ -959,12 +1003,12 @@ def _swap_textures_in_env(
                     except Exception:
                         pass
                 name_display = f"{base}{'' if scale == 1 else f'_x{scale}'}"
-                log.info(
-                    f"  [TEXTURE] Replaced '{name_display}' ({len(buf)} bytes)")
+                log.info(f"  [TEXTURE] Replaced '{name_display}' ({len(buf)} bytes)")
                 replaced += 1
             except Exception as e:
                 log.warning(
-                    f"  [TEXTURE] Failed to replace texture '{base}' at {scale}x: {e}")
+                    f"  [TEXTURE] Failed to replace texture '{base}' at {scale}x: {e}"
+                )
 
     # Parse SpriteAtlas for sprite overlay operations
     sprite_atlas_map = _parse_sprite_atlas(env)
@@ -991,12 +1035,18 @@ def _swap_textures_in_env(
                 continue
 
             force_mesh = str(normalized.get("mode", "")).lower() in {
-                "mesh", "vector", "mesh-only"}
+                "mesh",
+                "vector",
+                "mesh-only",
+            }
 
             base_pattern = target_name.lower()
             patterns: Set[str] = {base_pattern}
             if not re.search(r"[\*\?\[]", base_pattern):
-                if not any(base_pattern.endswith(f"_{scale}") for scale in ["1x", "2x", "3x", "4x"]):
+                if not any(
+                    base_pattern.endswith(f"_{scale}")
+                    for scale in ["1x", "2x", "3x", "4x"]
+                ):
                     for scale in ["1x", "2x", "3x", "4x"]:
                         patterns.add(f"{base_pattern}_{scale}")
 
@@ -1054,7 +1104,7 @@ def _swap_textures_in_env(
 
         for pattern, source_name in texture_name_map.items():
             # Check if pattern has wildcard
-            if '*' in pattern or '?' in pattern:
+            if "*" in pattern or "?" in pattern:
                 # Match against all sprites in atlas
                 matched_count = 0
                 for sprite_name in sprite_atlas_map.keys():
@@ -1063,10 +1113,10 @@ def _swap_textures_in_env(
                         matched_count += 1
                 if matched_count > 0:
                     log.info(
-                        f"[ATLAS] Pattern '{pattern}' matched {matched_count} sprites")
+                        f"[ATLAS] Pattern '{pattern}' matched {matched_count} sprites"
+                    )
                 else:
-                    log.debug(
-                        f"[ATLAS] Pattern '{pattern}' matched no sprites")
+                    log.debug(f"[ATLAS] Pattern '{pattern}' matched no sprites")
             else:
                 # Try exact match first
                 if pattern in sprite_atlas_map:
@@ -1074,7 +1124,7 @@ def _swap_textures_in_env(
                 else:
                     # Try scale-agnostic matching: add _1x, _2x, _3x, _4x suffixes
                     matched_count = 0
-                    for scale in ['1x', '2x', '3x', '4x']:
+                    for scale in ["1x", "2x", "3x", "4x"]:
                         scaled_name = f"{pattern}_{scale}"
                         if scaled_name in sprite_atlas_map:
                             expanded_name_map[scaled_name] = source_name
@@ -1082,7 +1132,8 @@ def _swap_textures_in_env(
 
                     if matched_count == 0:
                         log.debug(
-                            f"[ATLAS] Sprite '{pattern}' not found (tried exact and _1x/_2x/_3x/_4x variants)")
+                            f"[ATLAS] Sprite '{pattern}' not found (tried exact and _1x/_2x/_3x/_4x variants)"
+                        )
 
         # Use expanded map for processing
         name_map = expanded_name_map
@@ -1107,24 +1158,22 @@ def _swap_textures_in_env(
                     continue
 
             # Track modified atlas textures
-            modified_atlases: Dict[int,
-                                   Tuple[object, Image.Image, int, int]] = {}
+            modified_atlases: Dict[int, Tuple[object, Image.Image, int, int]] = {}
 
             # Process each mapping entry (only texture sprites, vector sprites handled separately)
             for target_sprite_name, source_image_name in name_map.items():
-
                 # Check if target exists in sprite atlas
                 atlas_info = sprite_atlas_map.get(target_sprite_name)
                 if atlas_info is None:
                     continue
 
                 # Check if source image exists
-                source_base, source_scale = _parse_base_and_scale(
-                    source_image_name)
+                source_base, source_scale = _parse_base_and_scale(source_image_name)
                 source_buf = src_by_base.get(source_base, {}).get(source_scale)
                 if source_buf is None:
                     log.warning(
-                        f"[ATLAS] Source image '{source_image_name}' not found for sprite '{target_sprite_name}'")
+                        f"[ATLAS] Source image '{source_image_name}' not found for sprite '{target_sprite_name}'"
+                    )
                     continue
 
                 # Get or load the atlas texture
@@ -1133,32 +1182,43 @@ def _swap_textures_in_env(
                     atlas_tex = tex_by_pathid_full.get(texture_path_id)
                     if atlas_tex is None:
                         log.warning(
-                            f"[ATLAS] Atlas texture with path_id {texture_path_id} not found for sprite '{target_sprite_name}'")
+                            f"[ATLAS] Atlas texture with path_id {texture_path_id} not found for sprite '{target_sprite_name}'"
+                        )
                         continue
 
                     try:
                         atlas_img = atlas_tex.image.convert("RGBA")
-                        atlas_width = getattr(atlas_tex, "m_Width", None) or getattr(
-                            atlas_tex, "width", None) or atlas_img.width
-                        atlas_height = getattr(atlas_tex, "m_Height", None) or getattr(
-                            atlas_tex, "height", None) or atlas_img.height
+                        atlas_width = (
+                            getattr(atlas_tex, "m_Width", None)
+                            or getattr(atlas_tex, "width", None)
+                            or atlas_img.width
+                        )
+                        atlas_height = (
+                            getattr(atlas_tex, "m_Height", None)
+                            or getattr(atlas_tex, "height", None)
+                            or atlas_img.height
+                        )
                         modified_atlases[texture_path_id] = (
-                            atlas_tex, atlas_img, atlas_width, atlas_height)
+                            atlas_tex,
+                            atlas_img,
+                            atlas_width,
+                            atlas_height,
+                        )
                     except Exception as e:
-                        log.warning(
-                            f"[ATLAS] Failed to load atlas texture: {e}")
+                        log.warning(f"[ATLAS] Failed to load atlas texture: {e}")
                         continue
 
                 atlas_tex, atlas_img, atlas_width, atlas_height = modified_atlases[
-                    texture_path_id]
+                    texture_path_id
+                ]
 
                 # Load source image
                 try:
-                    source_img = Image.open(
-                        BytesIO(source_buf)).convert("RGBA")
+                    source_img = Image.open(BytesIO(source_buf)).convert("RGBA")
                 except Exception as e:
                     log.warning(
-                        f"[ATLAS] Failed to load source image '{source_image_name}': {e}")
+                        f"[ATLAS] Failed to load source image '{source_image_name}': {e}"
+                    )
                     continue
 
                 # Calculate position (Unity uses bottom-left origin, PIL uses top-left)
@@ -1174,13 +1234,20 @@ def _swap_textures_in_env(
                 # Resize source image to match the sprite's rectangle size
                 if (source_img.width, source_img.height) != (rect_width, rect_height):
                     source_img = source_img.resize(
-                        (rect_width, rect_height), Image.Resampling.LANCZOS)
+                        (rect_width, rect_height), Image.Resampling.LANCZOS
+                    )
 
                 # Clear the original sprite region (to avoid artifacts)
-                clear_box = (pil_left, pil_top, pil_left +
-                             rect_width, pil_top + rect_height)
+                clear_box = (
+                    pil_left,
+                    pil_top,
+                    pil_left + rect_width,
+                    pil_top + rect_height,
+                )
                 atlas_img.paste(
-                    Image.new("RGBA", (rect_width, rect_height), (0, 0, 0, 0)), clear_box)
+                    Image.new("RGBA", (rect_width, rect_height), (0, 0, 0, 0)),
+                    clear_box,
+                )
 
                 # Paste the new sprite with alpha channel
                 paste_box = (pil_left, pil_top)
@@ -1188,17 +1255,24 @@ def _swap_textures_in_env(
 
                 # DEBUG: Verify the paste worked
                 crop_check = atlas_img.crop(
-                    (pil_left, pil_top, pil_left + rect_width, pil_top + rect_height))
+                    (pil_left, pil_top, pil_left + rect_width, pil_top + rect_height)
+                )
                 crop_extrema = crop_check.getextrema()
                 log.info(
-                    f"[ATLAS] DEBUG: After paste at PIL coords ({pil_left}, {pil_top}), region pixel extrema: {crop_extrema}")
+                    f"[ATLAS] DEBUG: After paste at PIL coords ({pil_left}, {pil_top}), region pixel extrema: {crop_extrema}"
+                )
 
                 modified_atlases[texture_path_id] = (
-                    atlas_tex, atlas_img, atlas_width, atlas_height)
+                    atlas_tex,
+                    atlas_img,
+                    atlas_width,
+                    atlas_height,
+                )
                 sprite_overlays += 1
 
                 log.info(
-                    f"[ATLAS] Overlaid sprite '{target_sprite_name}' with '{source_image_name}' at ({rect_x}, {rect_y}) size {rect_width}x{rect_height} in atlas '{atlas_info.atlas_name}'")
+                    f"[ATLAS] Overlaid sprite '{target_sprite_name}' with '{source_image_name}' at ({rect_x}, {rect_y}) size {rect_width}x{rect_height} in atlas '{atlas_info.atlas_name}'"
+                )
 
                 if candidate_sprite_keys:
                     job = DynamicSpriteRebind(
@@ -1210,12 +1284,21 @@ def _swap_textures_in_env(
                         dynamic_jobs[key].append(job)
 
             # Save modified atlas textures back
-            for texture_path_id, (atlas_tex, atlas_img, tw, th) in modified_atlases.items():
+            for texture_path_id, (
+                atlas_tex,
+                atlas_img,
+                tw,
+                th,
+            ) in modified_atlases.items():
                 try:
-                    tex_name = getattr(atlas_tex, "m_Name", None) or getattr(
-                        atlas_tex, "name", None) or f"texture_{texture_path_id}"
+                    tex_name = (
+                        getattr(atlas_tex, "m_Name", None)
+                        or getattr(atlas_tex, "name", None)
+                        or f"texture_{texture_path_id}"
+                    )
                     log.info(
-                        f"[ATLAS] Saving modified atlas texture '{tex_name}' (path_id={texture_path_id})")
+                        f"[ATLAS] Saving modified atlas texture '{tex_name}' (path_id={texture_path_id})"
+                    )
 
                     # CRITICAL: Clear m_StreamData so Unity uses image_data instead of external resource
                     if hasattr(atlas_tex, "m_StreamData"):
@@ -1224,33 +1307,30 @@ def _swap_textures_in_env(
                         atlas_tex.m_StreamData.size = 0
                         atlas_tex.m_StreamData.path = ""
                         log.info(
-                            f"[ATLAS] DEBUG: Cleared m_StreamData for '{tex_name}'")
+                            f"[ATLAS] DEBUG: Cleared m_StreamData for '{tex_name}'"
+                        )
 
                     if hasattr(atlas_tex, "set_image"):
                         atlas_tex.set_image(atlas_img)
-                        log.info(
-                            f"[ATLAS] DEBUG: Used set_image() for '{tex_name}'")
+                        log.info(f"[ATLAS] DEBUG: Used set_image() for '{tex_name}'")
                     elif hasattr(atlas_tex, "image_data"):
                         buf_io = BytesIO()
                         atlas_img.save(buf_io, format="PNG")
                         atlas_tex.image_data = buf_io.getvalue()
-                        log.info(
-                            f"[ATLAS] DEBUG: Used image_data for '{tex_name}'")
+                        log.info(f"[ATLAS] DEBUG: Used image_data for '{tex_name}'")
                     else:
                         log.warning(
-                            f"[ATLAS] No save method available for '{tex_name}'")
+                            f"[ATLAS] No save method available for '{tex_name}'"
+                        )
 
                     if hasattr(atlas_tex, "save"):
                         try:
                             atlas_tex.save()
-                            log.info(
-                                f"[ATLAS] DEBUG: Called save() on '{tex_name}'")
+                            log.info(f"[ATLAS] DEBUG: Called save() on '{tex_name}'")
                         except Exception as e:
-                            log.warning(
-                                f"[ATLAS] save() failed for '{tex_name}': {e}")
+                            log.warning(f"[ATLAS] save() failed for '{tex_name}': {e}")
                 except Exception as e:
-                    log.warning(
-                        f"[ATLAS] Failed to save modified atlas texture: {e}")
+                    log.warning(f"[ATLAS] Failed to save modified atlas texture: {e}")
 
             # CRITICAL: Update individual Sprite objects to reflect the modified atlas
             # Sprites cache their texture data and the game reads from this cache, not the atlas directly
@@ -1272,22 +1352,25 @@ def _swap_textures_in_env(
                                 sprites_updated += 1
                                 sprite_obj_found = True
                                 log.info(
-                                    f"[ATLAS] Touched/saved Sprite object '{sprite_name}' (path_id={sprite_path_id})")
+                                    f"[ATLAS] Touched/saved Sprite object '{sprite_name}' (path_id={sprite_path_id})"
+                                )
                                 break
                         except Exception as e:
                             log.warning(
-                                f"[ATLAS] Failed to save sprite object for '{sprite_name}': {e}")
+                                f"[ATLAS] Failed to save sprite object for '{sprite_name}': {e}"
+                            )
                 if not sprite_obj_found:
                     log.warning(
-                        f"[ATLAS] Could not find Sprite object for '{sprite_name}' with path_id {sprite_path_id} to save.")
+                        f"[ATLAS] Could not find Sprite object for '{sprite_name}' with path_id {sprite_path_id} to save."
+                    )
 
             if sprites_updated > 0:
                 log.info(
-                    f"[ATLAS] Updated {sprites_updated} Sprite objects to reflect atlas changes")
+                    f"[ATLAS] Updated {sprites_updated} Sprite objects to reflect atlas changes"
+                )
 
         except ImportError:
-            log.warning(
-                "[ATLAS] PIL not available, sprite atlas overlays skipped")
+            log.warning("[ATLAS] PIL not available, sprite atlas overlays skipped")
         except Exception as e:
             log.warning(f"[ATLAS] Sprite atlas overlay failed: {e}")
 
@@ -1298,8 +1381,7 @@ def _swap_textures_in_env(
         try:
             from .vector_sprites import replace_vector_sprite
 
-            overlay_skip = {name.lower()
-                            for name in vector_overlay_entries.keys()}
+            overlay_skip = {name.lower() for name in vector_overlay_entries.keys()}
 
             for obj in getattr(env, "objects", []):
                 if getattr(getattr(obj, "type", None), "name", None) != "Sprite":
@@ -1311,7 +1393,8 @@ def _swap_textures_in_env(
                     continue
 
                 sprite_name = getattr(sprite_obj, "m_Name", None) or getattr(
-                    sprite_obj, "name", None)
+                    sprite_obj, "name", None
+                )
                 if not sprite_name:
                     continue
 
@@ -1332,15 +1415,24 @@ def _swap_textures_in_env(
                 texture_ptr = None
                 if rd is not None:
                     texture_ptr = getattr(rd, "texture", None) or getattr(
-                        rd, "m_Texture", None)
+                        rd, "m_Texture", None
+                    )
                 if texture_ptr is None:
                     texture_ptr = getattr(sprite_obj, "m_Texture", None)
 
-                file_id = getattr(texture_ptr, "m_FileID",
-                                  None) if texture_ptr is not None else None
-                path_id = getattr(texture_ptr, "m_PathID",
-                                  None) if texture_ptr is not None else None
-                if (isinstance(file_id, int) and file_id != 0) or (isinstance(path_id, int) and path_id != 0):
+                file_id = (
+                    getattr(texture_ptr, "m_FileID", None)
+                    if texture_ptr is not None
+                    else None
+                )
+                path_id = (
+                    getattr(texture_ptr, "m_PathID", None)
+                    if texture_ptr is not None
+                    else None
+                )
+                if (isinstance(file_id, int) and file_id != 0) or (
+                    isinstance(path_id, int) and path_id != 0
+                ):
                     log.debug(
                         f"[VECTOR] Skipping '{sprite_name}' - retains texture reference (not a vector sprite)"
                     )
@@ -1362,8 +1454,7 @@ def _swap_textures_in_env(
                         **kwargs,
                     )
                 except Exception as exc:
-                    log.warning(
-                        f"[VECTOR] Failed to replace '{sprite_name}': {exc}")
+                    log.warning(f"[VECTOR] Failed to replace '{sprite_name}': {exc}")
                 else:
                     if success:
                         vectors_replaced += 1
@@ -1384,15 +1475,16 @@ def _swap_textures_in_env(
         # Help users discover names when no matches occurred
         sample = sorted(env_by_base.keys())[:10]
         if sample:
-            log.info(
-                f"[TEXTURE] No matches. Candidate names include: {sample} ...")
+            log.info(f"[TEXTURE] No matches. Candidate names include: {sample} ...")
         # If bundle has Sprites but their referenced textures aren't present in this bundle, hint about cross-bundle textures
         missing_refs = []
         for alias_name, pid in alias_entries:
             if isinstance(pid, int) and pid not in tex_by_pathid:
                 missing_refs.append(alias_name)
         if missing_refs:
-            log.info("[TEXTURE] This bundle contains Sprites/aliases whose Texture2D data is in another bundle. Try patching the bundle that actually contains the textures (often '*_assets_common.bundle').")
+            log.info(
+                "[TEXTURE] This bundle contains Sprites/aliases whose Texture2D data is in another bundle. Try patching the bundle that actually contains the textures (often '*_assets_common.bundle')."
+            )
     return TextureSwapInternalResult(
         replaced + sprite_overlays + vectors_replaced,
         {key: list(value) for key, value in dynamic_jobs.items()},
@@ -1447,6 +1539,7 @@ def swap_textures(
             return
         try:
             import json
+
             loaded = json.loads(p.read_text(encoding="utf-8"))
             if isinstance(loaded, dict):
                 for k, v in loaded.items():
@@ -1474,8 +1567,9 @@ def swap_textures(
             _load_map_file(skin_dir / "assets" / sub / fname)
 
     # Check if there are vector sprite replacements (don't need texture files)
-    has_vector_sprites = any(isinstance(v, dict) and v.get(
-        "type") == "vector" for v in name_map.values())
+    has_vector_sprites = any(
+        isinstance(v, dict) and v.get("type") == "vector" for v in name_map.values()
+    )
 
     if not replacements and not has_vector_sprites:
         return TextureSwapResult(0, None, {})
@@ -1509,7 +1603,8 @@ def swap_textures(
         return TextureSwapResult(0, None, dynamic_jobs)
     if dry_run:
         log.info(
-            f"[DRY-RUN] Would modify {count} textures/sprites in {bundle_path.name}")
+            f"[DRY-RUN] Would modify {count} textures/sprites in {bundle_path.name}"
+        )
         if own_env:
             try:
                 del env

@@ -47,7 +47,9 @@ log = get_logger(__name__)
 # -----------------------------
 
 
-def _build_unity_color(colors: Iterable[Any], r: float, g: float, b: float, a: float) -> Any:
+def _build_unity_color(
+    colors: Iterable[Any], r: float, g: float, b: float, a: float
+) -> Any:
     """Create a Unity-compatible color instance, falling back to simple namespaces for tests."""
     if UnityColorRGBA is not None:
         try:
@@ -93,18 +95,23 @@ class CssPatcher:
         self.selectors_filter = selectors_filter
         self.selector_props_filter = selector_props_filter
 
-    def patch_bundle_file(self, bundle_path: Path, out_dir: Path, candidate_assets: Optional[Set[str]] = None) -> Optional[List[str]]:
+    def patch_bundle_file(
+        self,
+        bundle_path: Path,
+        out_dir: Path,
+        candidate_assets: Optional[Set[str]] = None,
+    ) -> Optional[List[str]]:
         bundle_context = BundleContext(bundle_path, loader=UnityPy.load)
         try:
             report = self.patch_bundle(
-                bundle_context, candidate_assets=candidate_assets)
+                bundle_context, candidate_assets=candidate_assets
+            )
             if not report.has_changes:
                 return report.summary_lines if self.dry_run else None
             if self.dry_run:
                 return report.summary_lines
 
-            saved_path = bundle_context.save_modified(
-                out_dir, dry_run=self.dry_run)
+            saved_path = bundle_context.save_modified(out_dir, dry_run=self.dry_run)
             if saved_path is None:
                 log.error(
                     "[ERROR] Could not save patched bundle. The bundle may be corrupt or use unsupported compression."
@@ -148,8 +155,9 @@ class CssPatcher:
             name = getattr(data, "m_Name", "UnnamedStyleSheet")
             if candidate_assets is not None and name not in candidate_assets:
                 continue
-            css_vars_for_asset, selector_overrides_for_asset = self._effective_overrides(
-                name)
+            css_vars_for_asset, selector_overrides_for_asset = (
+                self._effective_overrides(name)
+            )
             will_patch = self._will_patch(
                 data,
                 css_vars_for_asset,
@@ -191,8 +199,7 @@ class CssPatcher:
                     data.save()
 
         if not any_changes:
-            log.info(
-                "No changes detected; skipping bundle write and debug outputs.")
+            log.info("No changes detected; skipping bundle write and debug outputs.")
             try:
                 original_uss.clear()
             except Exception:
@@ -298,15 +305,19 @@ class CssPatcher:
                 # bundle property names that differ by leading dashes still match
                 prop_candidates = []
                 if prop_name is not None:
-                    prop_candidates = [prop_name, prop_name.lstrip(
-                        "-"), "--" + prop_name.lstrip("-")]
-                match_key = next(
-                    (k for k in prop_candidates if k in css_vars), None)
+                    prop_candidates = [
+                        prop_name,
+                        prop_name.lstrip("-"),
+                        "--" + prop_name.lstrip("-"),
+                    ]
+                match_key = next((k for k in prop_candidates if k in css_vars), None)
                 if match_key:
                     for val in getattr(prop, "m_Values", []):
                         if getattr(val, "m_ValueType", None) == 4:
                             value_index = getattr(val, "valueIndex", None)
-                            if value_index is not None and 0 <= value_index < len(getattr(data, "colors", [])):
+                            if value_index is not None and 0 <= value_index < len(
+                                getattr(data, "colors", [])
+                            ):
                                 hex_val = css_vars[match_key]
                                 r, g, b, a = hex_to_rgba(hex_val)
                                 col = data.colors[value_index]
@@ -319,14 +330,17 @@ class CssPatcher:
                 prop_name = getattr(prop, "m_Name", None)
                 if not prop_name:
                     continue
-                candidates = [prop_name, prop_name.lstrip(
-                    "-"), "--" + prop_name.lstrip("-")]
-                match_key = next(
-                    (k for k in candidates if k in css_vars), None)
+                candidates = [
+                    prop_name,
+                    prop_name.lstrip("-"),
+                    "--" + prop_name.lstrip("-"),
+                ]
+                match_key = next((k for k in candidates if k in css_vars), None)
                 if not match_key:
                     continue
                 has_literal_color = any(
-                    getattr(val, "m_ValueType", None) == 4 for val in getattr(prop, "m_Values", [])
+                    getattr(val, "m_ValueType", None) == 4
+                    for val in getattr(prop, "m_Values", [])
                 )
                 if not has_literal_color:
                     return True
@@ -397,10 +411,18 @@ class CssPatcher:
                     for val in getattr(prop, "m_Values", []):
                         if getattr(val, "m_ValueType", None) == 4:
                             value_index = getattr(val, "valueIndex", None)
-                            if value_index is not None and 0 <= value_index < len(getattr(data, "colors", [])):
+                            if value_index is not None and 0 <= value_index < len(
+                                getattr(data, "colors", [])
+                            ):
                                 prop_name = getattr(prop, "m_Name", "")
                                 css_match = next(
-                                    (css_vars[k] for k in css_vars if k.endswith(prop_name)), None)
+                                    (
+                                        css_vars[k]
+                                        for k in css_vars
+                                        if k.endswith(prop_name)
+                                    ),
+                                    None,
+                                )
                                 if css_match:
                                     r, g, b, a = hex_to_rgba(css_match)
                                     col = data.colors[value_index]
@@ -408,13 +430,19 @@ class CssPatcher:
                                         return True
 
         # Selector/property overrides
-        selectors = getattr(data, "m_ComplexSelectors", []) if hasattr(
-            data, "m_ComplexSelectors") else []
+        selectors = (
+            getattr(data, "m_ComplexSelectors", [])
+            if hasattr(data, "m_ComplexSelectors")
+            else []
+        )
         rules = getattr(data, "m_Rules", [])
         for rule_idx, rule in enumerate(rules):
             selector_texts: List[str] = []
             for sel in selectors:
-                if hasattr(sel, "ruleIndex") and getattr(sel, "ruleIndex", -1) == rule_idx:
+                if (
+                    hasattr(sel, "ruleIndex")
+                    and getattr(sel, "ruleIndex", -1) == rule_idx
+                ):
                     for selector in getattr(sel, "m_Selectors", []):
                         parts = getattr(selector, "m_Parts", [])
                         selector_texts.append(build_selector_from_parts(parts))
@@ -428,23 +456,29 @@ class CssPatcher:
                     if self.selector_props_filter is not None:
                         # Require a (selector, prop) match in hints
                         allowed = any(
-                            (sv, prop_name) in self.selector_props_filter for sv in sel_variants)
+                            (sv, prop_name) in self.selector_props_filter
+                            for sv in sel_variants
+                        )
                         if not allowed:
                             continue
                     elif self.selectors_filter is not None:
                         # Require selector to be in allowed set
                         allowed = any(
-                            sv in self.selectors_filter for sv in sel_variants)
+                            sv in self.selectors_filter for sv in sel_variants
+                        )
                         if not allowed:
                             continue
 
                     if (selector_text, prop_name) in selector_overrides or (
-                        selector_text.lstrip("."), prop_name
+                        selector_text.lstrip("."),
+                        prop_name,
                     ) in selector_overrides:
                         for val in getattr(prop, "m_Values", []):
                             if getattr(val, "m_ValueType", None) == 4:
                                 value_index = getattr(val, "valueIndex", None)
-                                if value_index is not None and 0 <= value_index < len(getattr(data, "colors", [])):
+                                if value_index is not None and 0 <= value_index < len(
+                                    getattr(data, "colors", [])
+                                ):
                                     return True
         return False
 
@@ -462,8 +496,11 @@ class CssPatcher:
         colors = getattr(data, "colors", [])
         strings = getattr(data, "strings", [])
         rules = getattr(data, "m_Rules", [])
-        selectors = getattr(data, "m_ComplexSelectors", []) if hasattr(
-            data, "m_ComplexSelectors") else []
+        selectors = (
+            getattr(data, "m_ComplexSelectors", [])
+            if hasattr(data, "m_ComplexSelectors")
+            else []
+        )
 
         # Direct property patches (by var name == prop m_Name)
         direct_property_patched_indices = set()
@@ -473,23 +510,26 @@ class CssPatcher:
                 # Normalize prop name variants to be permissive when matching keys
                 match_key = None
                 if prop_name is not None:
-                    candidates = [prop_name, prop_name.lstrip(
-                        "-"), "--" + prop_name.lstrip("-")]
-                    match_key = next(
-                        (k for k in candidates if k in css_vars), None)
+                    candidates = [
+                        prop_name,
+                        prop_name.lstrip("-"),
+                        "--" + prop_name.lstrip("-"),
+                    ]
+                    match_key = next((k for k in candidates if k in css_vars), None)
                 if match_key:
                     for val in getattr(prop, "m_Values", []):
                         if getattr(val, "m_ValueType", None) == 4:
                             value_index = getattr(val, "valueIndex", None)
-                            if value_index is not None and 0 <= value_index < len(colors):
+                            if value_index is not None and 0 <= value_index < len(
+                                colors
+                            ):
                                 hex_val = css_vars[match_key]
                                 r, g, b, a = hex_to_rgba(hex_val)
                                 col = colors[value_index]
                                 if (col.r, col.g, col.b, col.a) != (r, g, b, a):
                                     col.r, col.g, col.b, col.a = r, g, b, a
                                     patched_vars += 1
-                                    direct_property_patched_indices.add(
-                                        value_index)
+                                    direct_property_patched_indices.add(value_index)
                                     log.info(
                                         f"  [PATCHED - direct property] {name}: {match_key} (color index {value_index}) → {hex_val}"
                                     )
@@ -503,15 +543,18 @@ class CssPatcher:
                 prop_name = getattr(prop, "m_Name", None)
                 if prop_name is None:
                     continue
-                candidates = [prop_name, prop_name.lstrip(
-                    "-"), "--" + prop_name.lstrip("-")]
-                match_key = next(
-                    (k for k in candidates if k in css_vars), None)
+                candidates = [
+                    prop_name,
+                    prop_name.lstrip("-"),
+                    "--" + prop_name.lstrip("-"),
+                ]
+                match_key = next((k for k in candidates if k in css_vars), None)
                 if not match_key:
                     continue
                 values = list(getattr(prop, "m_Values", []))
                 has_literal_color = any(
-                    getattr(val, "m_ValueType", None) == 4 for val in values)
+                    getattr(val, "m_ValueType", None) == 4 for val in values
+                )
                 if has_literal_color or not values:
                     continue
 
@@ -522,8 +565,11 @@ class CssPatcher:
                 new_index = len(colors) - 1
 
                 handle = next(
-                    (val for val in values if getattr(
-                        val, "m_ValueType", None) in {3, 8, 10}),
+                    (
+                        val
+                        for val in values
+                        if getattr(val, "m_ValueType", None) in {3, 8, 10}
+                    ),
                     values[0],
                 )
                 setattr(handle, "m_ValueType", 4)
@@ -566,7 +612,8 @@ class CssPatcher:
             if found:
                 color_indices_to_patch[color_idx] = var_name
                 log.info(
-                    f"  [WILL PATCH] {name}: {var_name} (color index {color_idx}) → {css_vars[var_name]}")
+                    f"  [WILL PATCH] {name}: {var_name} (color index {color_idx}) → {css_vars[var_name]}"
+                )
 
         for color_idx, var_name in color_indices_to_patch.items():
             hex_val = css_vars.get(var_name)
@@ -578,7 +625,8 @@ class CssPatcher:
                 col.r, col.g, col.b, col.a = r, g, b, a
                 patched_vars += 1
                 log.info(
-                    f"  [PATCHED] {name}: {var_name} (color index {color_idx}) → {hex_val}")
+                    f"  [PATCHED] {name}: {var_name} (color index {color_idx}) → {hex_val}"
+                )
                 changed = True
 
         # Optional: patch inlined literals
@@ -591,7 +639,13 @@ class CssPatcher:
                         if value_type == 4 and 0 <= value_index < len(colors):
                             prop_name = getattr(prop, "m_Name", "")
                             css_match = next(
-                                (css_vars[k] for k in css_vars if k.endswith(prop_name)), None)
+                                (
+                                    css_vars[k]
+                                    for k in css_vars
+                                    if k.endswith(prop_name)
+                                ),
+                                None,
+                            )
                             if css_match:
                                 r, g, b, a = hex_to_rgba(css_match)
                                 col = colors[value_index]
@@ -607,7 +661,10 @@ class CssPatcher:
         for rule_idx, rule in enumerate(rules):
             selector_texts: List[str] = []
             for sel in selectors:
-                if hasattr(sel, "ruleIndex") and getattr(sel, "ruleIndex", -1) == rule_idx:
+                if (
+                    hasattr(sel, "ruleIndex")
+                    and getattr(sel, "ruleIndex", -1) == rule_idx
+                ):
                     for selector in getattr(sel, "m_Selectors", []):
                         parts = getattr(selector, "m_Parts", [])
                         selector_texts.append(build_selector_from_parts(parts))
@@ -627,7 +684,10 @@ class CssPatcher:
                                 continue
                         elif self.selectors_filter is not None:
                             sel_only = key[0]
-                            if sel_only not in self.selectors_filter and sel_only.lstrip(".") not in self.selectors_filter:
+                            if (
+                                sel_only not in self.selectors_filter
+                                and sel_only.lstrip(".") not in self.selectors_filter
+                            ):
                                 continue
                         if key in selector_overrides:
                             hex_val = selector_overrides[key]
@@ -640,9 +700,11 @@ class CssPatcher:
                             for val in values:
                                 if getattr(val, "m_ValueType", None) == 4:
                                     found_type4 = True
-                                    value_index = getattr(
-                                        val, "valueIndex", None)
-                                    if value_index is not None and 0 <= value_index < len(colors):
+                                    value_index = getattr(val, "valueIndex", None)
+                                    if (
+                                        value_index is not None
+                                        and 0 <= value_index < len(colors)
+                                    ):
                                         col = colors[value_index]
                                         if (col.r, col.g, col.b, col.a) != (r, g, b, a):
                                             col.r, col.g, col.b, col.a = r, g, b, a
@@ -657,11 +719,19 @@ class CssPatcher:
                                             )
                                         try:
                                             touches = getattr(
-                                                self, "_selector_touches", None)
+                                                self, "_selector_touches", None
+                                            )
                                             if touches is not None:
                                                 norm_sel = key[0]
-                                                touches.setdefault((norm_sel if norm_sel.startswith(
-                                                    '.') else norm_sel, prop_name), set()).add(name)
+                                                touches.setdefault(
+                                                    (
+                                                        norm_sel
+                                                        if norm_sel.startswith(".")
+                                                        else norm_sel,
+                                                        prop_name,
+                                                    ),
+                                                    set(),
+                                                ).add(name)
                                         except Exception:
                                             pass
                             if not found_type4:
@@ -669,7 +739,8 @@ class CssPatcher:
                                     (
                                         val
                                         for val in values
-                                        if getattr(val, "m_ValueType", None) in {3, 8, 10}
+                                        if getattr(val, "m_ValueType", None)
+                                        in {3, 8, 10}
                                     ),
                                     None,
                                 )
@@ -678,13 +749,11 @@ class CssPatcher:
                                         f"  [WARN] No suitable value found to convert for {key} in {name}."
                                     )
                                     continue
-                                new_color = _build_unity_color(
-                                    colors, r, g, b, a)
+                                new_color = _build_unity_color(colors, r, g, b, a)
                                 colors.append(new_color)
                                 new_index = len(colors) - 1
                                 setattr(replacement_handle, "m_ValueType", 4)
-                                setattr(replacement_handle,
-                                        "valueIndex", new_index)
+                                setattr(replacement_handle, "valueIndex", new_index)
                                 patched_vars += 1
                                 direct_property_patched_indices.add(new_index)
                                 changed = True
@@ -692,14 +761,23 @@ class CssPatcher:
                                     f"  [PATCHED - selector/property literal] {name}: {key} (new color index {new_index}) → {hex_val}"
                                 )
                                 try:
-                                    touches = getattr(
-                                        self, "_selector_touches", None)
+                                    touches = getattr(self, "_selector_touches", None)
                                     if touches is not None:
                                         norm_sel = key[0]
-                                        touches.setdefault((norm_sel if norm_sel.startswith(
-                                            '.') else norm_sel, prop_name), set()).add(name)
+                                        touches.setdefault(
+                                            (
+                                                norm_sel
+                                                if norm_sel.startswith(".")
+                                                else norm_sel,
+                                                prop_name,
+                                            ),
+                                            set(),
+                                        ).add(name)
                                 except Exception:
-                                    log.exception("Exception occurred while updating selector touches for %s", key)
+                                    log.exception(
+                                        "Exception occurred while updating selector touches for %s",
+                                        key,
+                                    )
 
         if self.debug_export_dir and changed and not self.dry_run:
             # Ensure dir exists before exporting
@@ -711,8 +789,9 @@ class CssPatcher:
     def _export_debug_original(self, name: str, data) -> None:
         assert self.debug_export_dir is not None
         uss_text = serialize_stylesheet_to_uss(data)
-        (self.debug_export_dir /
-         f"original_{name}.uss").write_text(uss_text, encoding="utf-8")
+        (self.debug_export_dir / f"original_{name}.uss").write_text(
+            uss_text, encoding="utf-8"
+        )
 
         try:
             raw_json = clean_for_json(data)
@@ -733,29 +812,36 @@ class CssPatcher:
                 if k in raw_json:
                     out_json[k] = raw_json[k]
                 else:
-                    if k in {"m_CorrespondingSourceObject", "m_PrefabAsset", "m_PrefabInstance", "m_GameObject"}:
+                    if k in {
+                        "m_CorrespondingSourceObject",
+                        "m_PrefabAsset",
+                        "m_PrefabInstance",
+                        "m_GameObject",
+                    }:
                         out_json[k] = {"m_FileID": 0, "m_PathID": 0}
                     elif k == "m_EditorClassIdentifier":
                         out_json[k] = ""
                     elif k in {"m_EditorHideFlags", "m_HideFlags"}:
                         out_json[k] = 0
-            structure = {k: raw_json[k]
-                         for k in raw_json if k not in root_fields}
-            if "m_ImportedWithWarnings" in structure and structure["m_ImportedWithWarnings"] is None:
+            structure = {k: raw_json[k] for k in raw_json if k not in root_fields}
+            if (
+                "m_ImportedWithWarnings" in structure
+                and structure["m_ImportedWithWarnings"] is None
+            ):
                 structure["m_ImportedWithWarnings"] = 0
             out_json["m_Structure"] = structure
             (self.debug_export_dir / f"original_{name}.json").write_text(
                 json.dumps(out_json, ensure_ascii=False, indent=2), encoding="utf-8"
             )
         except Exception as e:
-            log.warning(
-                f"[WARN] Could not export original JSON for {name}: {e}")
+            log.warning(f"[WARN] Could not export original JSON for {name}: {e}")
 
         minimal = {
             "m_Name": getattr(data, "m_Name", None),
             "strings": list(getattr(data, "strings", [])),
             "colors": [
-                {"r": c.r, "g": c.g, "b": c.b, "a": c.a} for c in getattr(data, "colors", [])
+                {"r": c.r, "g": c.g, "b": c.b, "a": c.a}
+                for c in getattr(data, "colors", [])
             ],
         }
         (self.debug_export_dir / f"original_{name}_minimal.json").write_text(
@@ -765,8 +851,9 @@ class CssPatcher:
     def _export_debug_patched(self, name: str, data) -> None:
         assert self.debug_export_dir is not None
         uss_text = serialize_stylesheet_to_uss(data)
-        (self.debug_export_dir /
-         f"patched_{name}.uss").write_text(uss_text, encoding="utf-8")
+        (self.debug_export_dir / f"patched_{name}.uss").write_text(
+            uss_text, encoding="utf-8"
+        )
         try:
             raw_json = clean_for_json(data)
             root_fields = [
@@ -786,28 +873,35 @@ class CssPatcher:
                 if k in raw_json:
                     out_json[k] = raw_json[k]
                 else:
-                    if k in {"m_CorrespondingSourceObject", "m_PrefabAsset", "m_PrefabInstance", "m_GameObject"}:
+                    if k in {
+                        "m_CorrespondingSourceObject",
+                        "m_PrefabAsset",
+                        "m_PrefabInstance",
+                        "m_GameObject",
+                    }:
                         out_json[k] = {"m_FileID": 0, "m_PathID": 0}
                     elif k == "m_EditorClassIdentifier":
                         out_json[k] = ""
                     elif k in {"m_EditorHideFlags", "m_HideFlags"}:
                         out_json[k] = 0
-            structure = {k: raw_json[k]
-                         for k in raw_json if k not in root_fields}
-            if "m_ImportedWithWarnings" in structure and structure["m_ImportedWithWarnings"] is None:
+            structure = {k: raw_json[k] for k in raw_json if k not in root_fields}
+            if (
+                "m_ImportedWithWarnings" in structure
+                and structure["m_ImportedWithWarnings"] is None
+            ):
                 structure["m_ImportedWithWarnings"] = 0
             out_json["m_Structure"] = structure
             (self.debug_export_dir / f"patched_{name}.json").write_text(
                 json.dumps(out_json, ensure_ascii=False, indent=2), encoding="utf-8"
             )
         except Exception as e:
-            log.warning(
-                f"[WARN] Could not export patched JSON for {name}: {e}")
+            log.warning(f"[WARN] Could not export patched JSON for {name}: {e}")
         minimal = {
             "m_Name": getattr(data, "m_Name", None),
             "strings": list(getattr(data, "strings", [])),
             "colors": [
-                {"r": c.r, "g": c.g, "b": c.b, "a": c.a} for c in getattr(data, "colors", [])
+                {"r": c.r, "g": c.g, "b": c.b, "a": c.a}
+                for c in getattr(data, "colors", [])
             ],
         }
         (self.debug_export_dir / f"patched_{name}_minimal.json").write_text(
@@ -828,7 +922,7 @@ class PipelineOptions:
 @dataclass
 class PipelineResult:
     """Result object returned by the skin patching pipeline.
-    
+
     Attributes:
         bundle_reports: List of individual bundle patch reports with details per bundle.
         css_bundles_modified: Number of CSS bundles that were actually modified.
@@ -837,6 +931,7 @@ class PipelineResult:
         bundles_requested: Total number of bundles requested for processing.
         summary_lines: Human-readable summary lines for CLI output.
     """
+
     bundle_reports: List[PatchReport]
     css_bundles_modified: int
     texture_replacements_total: int
@@ -877,8 +972,7 @@ class SkinPatchPipeline:
         hints_assets, hints_selectors, hints_selector_props = load_targeting_hints(
             self.css_dir
         )
-        debug_dir = (self.out_dir /
-                     "debug_uss") if self.options.debug_export else None
+        debug_dir = (self.out_dir / "debug_uss") if self.options.debug_export else None
         css_service = CssPatchService(
             css_data,
             CssPatchOptions(
@@ -893,8 +987,7 @@ class SkinPatchPipeline:
         bundle_files: List[Path] = []
         if bundle is not None:
             if bundle.is_dir():
-                bundle_files = [
-                    p for p in bundle.iterdir() if p.suffix == ".bundle"]
+                bundle_files = [p for p in bundle.iterdir() if p.suffix == ".bundle"]
             else:
                 bundle_files = [bundle]
         else:
@@ -914,8 +1007,9 @@ class SkinPatchPipeline:
         skin_cache_dir: Optional[Path] = None
         if self.options.use_scan_cache and skin_is_known:
             try:
-                skin_cache_dir = cache_dir(
-                    root=self.css_dir.parent.parent) / self.css_dir.name
+                skin_cache_dir = (
+                    cache_dir(root=self.css_dir.parent.parent) / self.css_dir.name
+                )
                 skin_cache_dir.mkdir(parents=True, exist_ok=True)
                 for b in bundle_files:
                     cand = _load_or_refresh_scan_cache(
@@ -932,17 +1026,13 @@ class SkinPatchPipeline:
                 skin_cache_dir = None
 
         includes = getattr(cfg_model, "includes", None)
-        includes_list: List[str] = list(
-            includes) if isinstance(includes, list) else []
-        want_icons = any(x.strip().lower() ==
-                         "assets/icons" for x in includes_list)
-        want_bgs = any(x.strip().lower() ==
-                       "assets/backgrounds" for x in includes_list)
+        includes_list: List[str] = list(includes) if isinstance(includes, list) else []
+        want_icons = any(x.strip().lower() == "assets/icons" for x in includes_list)
+        want_bgs = any(x.strip().lower() == "assets/backgrounds" for x in includes_list)
         icon_dir = self.css_dir / "assets" / "icons"
         bg_dir = self.css_dir / "assets" / "backgrounds"
         replace_stems = set(
-            collect_replacement_stems(icon_dir) +
-            collect_replacement_stems(bg_dir)
+            collect_replacement_stems(icon_dir) + collect_replacement_stems(bg_dir)
         )
         name_map = load_texture_name_map(self.css_dir)
         target_names_from_map = set(name_map.keys())
@@ -954,8 +1044,7 @@ class SkinPatchPipeline:
         texture_service: Optional[TextureSwapService] = None
         if swap_targets_present:
             texture_service = TextureSwapService(
-                TextureSwapOptions(includes=includes_list,
-                                   dry_run=self.options.dry_run)
+                TextureSwapOptions(includes=includes_list, dry_run=self.options.dry_run)
             )
 
         summary_lines: List[str] = []
@@ -1032,8 +1121,7 @@ class SkinPatchPipeline:
     ) -> Optional[PatchReport]:
         if self.options.backup:
             ts = os.environ.get("FM_SKIN_BACKUP_TS") or "backup"
-            backup_path = bundle_path.with_suffix(
-                bundle_path.suffix + f".{ts}.bak")
+            backup_path = bundle_path.with_suffix(bundle_path.suffix + f".{ts}.bak")
             try:
                 shutil.copy2(bundle_path, backup_path)
                 log.info(f"🗄️ Backed up original bundle to {backup_path}")
@@ -1071,11 +1159,13 @@ class SkinPatchPipeline:
         with BundleContext(bundle_path) as bundle_ctx:
             if do_css:
                 report = css_service.apply(
-                    bundle_ctx, candidate_assets=candidate_assets)
+                    bundle_ctx, candidate_assets=candidate_assets
+                )
             else:
                 bundle_ctx.load()
-                report = PatchReport(bundle_ctx.bundle_path,
-                                     dry_run=self.options.dry_run)
+                report = PatchReport(
+                    bundle_ctx.bundle_path, dry_run=self.options.dry_run
+                )
 
             if texture_service:
                 if bundle_index is None:
@@ -1093,8 +1183,7 @@ class SkinPatchPipeline:
                     want_icons=want_icons,
                     want_backgrounds=want_bgs,
                 )
-                has_pending_jobs = texture_service.has_pending_jobs(
-                    bundle_path.name)
+                has_pending_jobs = texture_service.has_pending_jobs(bundle_path.name)
                 if should_swap or has_pending_jobs:
                     try:
                         texture_service.apply(
@@ -1104,11 +1193,11 @@ class SkinPatchPipeline:
                             report,
                         )
                     except Exception as exc:
-                        log.warning(
-                            f"[WARN] Texture swap skipped due to error: {exc}")
+                        log.warning(f"[WARN] Texture swap skipped due to error: {exc}")
                 else:
                     log.debug(
-                        "[TEXTURE] Prefilter: skipping bundle with no matching names or pending sprite rebinds.")
+                        "[TEXTURE] Prefilter: skipping bundle with no matching names or pending sprite rebinds."
+                    )
 
             saved_path = bundle_ctx.save_modified(
                 self.out_dir, dry_run=self.options.dry_run

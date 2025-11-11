@@ -91,7 +91,9 @@ class CatalogueBuilder:
         Args:
             bundle_paths: List of paths to .bundle files or directories containing bundles
         """
-        log.info(f"Building catalogue for FM {self.fm_version} v{self.catalogue_version}")
+        log.info(
+            f"Building catalogue for FM {self.fm_version} v{self.catalogue_version}"
+        )
 
         # Expand directories to bundle files
         bundles = self._expand_bundle_paths(bundle_paths)
@@ -168,31 +170,44 @@ class CatalogueBuilder:
 
                 # Extract sprites (returns raw data, not models yet)
                 try:
-                    sprite_data_list = self.sprite_extractor.extract_from_bundle(bundle_path)
-                    if not hasattr(self, '_sprite_data'):
+                    sprite_data_list = self.sprite_extractor.extract_from_bundle(
+                        bundle_path
+                    )
+                    if not hasattr(self, "_sprite_data"):
                         self._sprite_data = []
                     self._sprite_data.extend(sprite_data_list)
                 except Exception as e:
-                    log.warning(f"  Error extracting sprites from {bundle_path.name}: {e}")
+                    log.warning(
+                        f"  Error extracting sprites from {bundle_path.name}: {e}"
+                    )
 
                 # Extract textures (returns raw data)
                 try:
-                    texture_data_list = self.texture_extractor.extract_from_bundle(bundle_path)
-                    if not hasattr(self, '_texture_data'):
+                    texture_data_list = self.texture_extractor.extract_from_bundle(
+                        bundle_path
+                    )
+                    if not hasattr(self, "_texture_data"):
                         self._texture_data = []
                     self._texture_data.extend(texture_data_list)
                 except Exception as e:
-                    log.warning(f"  Error extracting textures from {bundle_path.name}: {e}")
+                    log.warning(
+                        f"  Error extracting textures from {bundle_path.name}: {e}"
+                    )
 
                 # Extract fonts
                 try:
-                    self.fonts.extend(self.font_extractor.extract_from_bundle(bundle_path))
+                    self.fonts.extend(
+                        self.font_extractor.extract_from_bundle(bundle_path)
+                    )
                 except Exception as e:
-                    log.warning(f"  Error extracting fonts from {bundle_path.name}: {e}")
+                    log.warning(
+                        f"  Error extracting fonts from {bundle_path.name}: {e}"
+                    )
 
             except Exception as e:
                 log.error(f"  Critical error scanning {bundle_path.name}: {e}")
                 import traceback
+
                 log.debug(traceback.format_exc())
 
             # Force garbage collection after each bundle to prevent memory issues
@@ -207,7 +222,7 @@ class CatalogueBuilder:
         textures_skipped = 0
 
         # Process sprites
-        if hasattr(self, '_sprite_data'):
+        if hasattr(self, "_sprite_data"):
             for sprite_data in self._sprite_data:
                 try:
                     sprite, was_cached = self._process_sprite_image(sprite_data)
@@ -218,10 +233,12 @@ class CatalogueBuilder:
                         else:
                             sprites_processed += 1
                 except Exception as e:
-                    log.warning(f"  Error processing sprite {sprite_data.get('name')}: {e}")
+                    log.warning(
+                        f"  Error processing sprite {sprite_data.get('name')}: {e}"
+                    )
 
         # Process textures
-        if hasattr(self, '_texture_data'):
+        if hasattr(self, "_texture_data"):
             for texture_data in self._texture_data:
                 try:
                     texture, was_cached = self._process_texture_image(texture_data)
@@ -232,34 +249,42 @@ class CatalogueBuilder:
                         else:
                             textures_processed += 1
                 except Exception as e:
-                    log.warning(f"  Error processing texture {texture_data.get('name')}: {e}")
+                    log.warning(
+                        f"  Error processing texture {texture_data.get('name')}: {e}"
+                    )
 
-        log.info(f"  Sprites: {sprites_processed} processed, {sprites_skipped} deduplicated (skipped)")
-        log.info(f"  Textures: {textures_processed} processed, {textures_skipped} deduplicated (skipped)")
+        log.info(
+            f"  Sprites: {sprites_processed} processed, {sprites_skipped} deduplicated (skipped)"
+        )
+        log.info(
+            f"  Textures: {textures_processed} processed, {textures_skipped} deduplicated (skipped)"
+        )
 
-    def _process_sprite_image(self, sprite_data: Dict[str, Any]) -> tuple[Optional[Sprite], bool]:
+    def _process_sprite_image(
+        self, sprite_data: Dict[str, Any]
+    ) -> tuple[Optional[Sprite], bool]:
         """
         Process sprite image data to create Sprite model.
 
         Returns:
             Tuple of (Sprite, was_cached) where was_cached indicates if processing was skipped
         """
-        image_data = sprite_data.get('image_data')
+        image_data = sprite_data.get("image_data")
         if not image_data:
             # No image data (e.g., atlas sprite)
             # Create sprite without thumbnail
             sprite = Sprite(
-                name=sprite_data['name'],
+                name=sprite_data["name"],
                 aliases=[],
-                has_vertex_data=sprite_data.get('has_vertex_data', False),
+                has_vertex_data=sprite_data.get("has_vertex_data", False),
                 content_hash="",
                 thumbnail_path="",
-                width=sprite_data.get('width', 0),
-                height=sprite_data.get('height', 0),
+                width=sprite_data.get("width", 0),
+                height=sprite_data.get("height", 0),
                 dominant_colors=[],
-                tags=generate_tags(sprite_data['name']),
-                atlas=sprite_data.get('atlas'),
-                bundles=[sprite_data['bundle']],
+                tags=generate_tags(sprite_data["name"]),
+                atlas=sprite_data.get("atlas"),
+                bundles=[sprite_data["bundle"]],
                 first_seen=self.fm_version,
                 last_seen=self.fm_version,
             )
@@ -273,17 +298,17 @@ class CatalogueBuilder:
             # Reuse cached data
             cached = self._sprite_hash_cache[content_hash]
             sprite = Sprite(
-                name=sprite_data['name'],
+                name=sprite_data["name"],
                 aliases=[],
-                has_vertex_data=sprite_data.get('has_vertex_data', False),
+                has_vertex_data=sprite_data.get("has_vertex_data", False),
                 content_hash=content_hash,
-                thumbnail_path=cached['thumbnail_path'],
-                width=cached['width'],
-                height=cached['height'],
-                dominant_colors=cached['dominant_colors'],
-                tags=generate_tags(sprite_data['name']),
-                atlas=sprite_data.get('atlas'),
-                bundles=[sprite_data['bundle']],
+                thumbnail_path=cached["thumbnail_path"],
+                width=cached["width"],
+                height=cached["height"],
+                dominant_colors=cached["dominant_colors"],
+                tags=generate_tags(sprite_data["name"]),
+                atlas=sprite_data.get("atlas"),
+                bundles=[sprite_data["bundle"]],
                 first_seen=self.fm_version,
                 last_seen=self.fm_version,
             )
@@ -292,47 +317,51 @@ class CatalogueBuilder:
         # Not cached - process image (expensive operation)
         thumbnail_filename = f"{content_hash}.webp"
         thumbnail_path = self.output_dir / "thumbnails" / "sprites" / thumbnail_filename
-        original_size = self.image_processor.create_thumbnail(image_data, thumbnail_path)
+        original_size = self.image_processor.create_thumbnail(
+            image_data, thumbnail_path
+        )
 
         # Extract dominant colors
         dominant_colors = extract_dominant_colors(image_data, num_colors=5)
 
         # Cache the processed data
         self._sprite_hash_cache[content_hash] = {
-            'thumbnail_path': f"thumbnails/sprites/{thumbnail_filename}",
-            'width': sprite_data.get('width', original_size[0]),
-            'height': sprite_data.get('height', original_size[1]),
-            'dominant_colors': dominant_colors,
+            "thumbnail_path": f"thumbnails/sprites/{thumbnail_filename}",
+            "width": sprite_data.get("width", original_size[0]),
+            "height": sprite_data.get("height", original_size[1]),
+            "dominant_colors": dominant_colors,
         }
 
         # Generate tags
-        tags = generate_tags(sprite_data['name'])
+        tags = generate_tags(sprite_data["name"])
 
         sprite = Sprite(
-            name=sprite_data['name'],
+            name=sprite_data["name"],
             aliases=[],
-            has_vertex_data=sprite_data.get('has_vertex_data', False),
+            has_vertex_data=sprite_data.get("has_vertex_data", False),
             content_hash=content_hash,
             thumbnail_path=f"thumbnails/sprites/{thumbnail_filename}",
-            width=sprite_data.get('width', original_size[0]),
-            height=sprite_data.get('height', original_size[1]),
+            width=sprite_data.get("width", original_size[0]),
+            height=sprite_data.get("height", original_size[1]),
             dominant_colors=dominant_colors,
             tags=tags,
-            atlas=sprite_data.get('atlas'),
-            bundles=[sprite_data['bundle']],
+            atlas=sprite_data.get("atlas"),
+            bundles=[sprite_data["bundle"]],
             first_seen=self.fm_version,
             last_seen=self.fm_version,
         )
         return sprite, False
 
-    def _process_texture_image(self, texture_data: Dict[str, Any]) -> tuple[Optional[Texture], bool]:
+    def _process_texture_image(
+        self, texture_data: Dict[str, Any]
+    ) -> tuple[Optional[Texture], bool]:
         """
         Process texture image data to create Texture model.
 
         Returns:
             Tuple of (Texture, was_cached) where was_cached indicates if processing was skipped
         """
-        image_data = texture_data.get('image_data')
+        image_data = texture_data.get("image_data")
         if not image_data:
             return None, False
 
@@ -344,16 +373,16 @@ class CatalogueBuilder:
             # Reuse cached data
             cached = self._texture_hash_cache[content_hash]
             texture = Texture(
-                name=texture_data['name'],
+                name=texture_data["name"],
                 aliases=[],
                 content_hash=content_hash,
-                thumbnail_path=cached['thumbnail_path'],
-                type=texture_data.get('type', 'texture'),
-                width=cached['width'],
-                height=cached['height'],
-                dominant_colors=cached['dominant_colors'],
-                tags=generate_tags(texture_data['name']),
-                bundles=[texture_data['bundle']],
+                thumbnail_path=cached["thumbnail_path"],
+                type=texture_data.get("type", "texture"),
+                width=cached["width"],
+                height=cached["height"],
+                dominant_colors=cached["dominant_colors"],
+                tags=generate_tags(texture_data["name"]),
+                bundles=[texture_data["bundle"]],
                 first_seen=self.fm_version,
                 last_seen=self.fm_version,
             )
@@ -361,34 +390,38 @@ class CatalogueBuilder:
 
         # Not cached - process image (expensive operation)
         thumbnail_filename = f"{content_hash}.webp"
-        thumbnail_path = self.output_dir / "thumbnails" / "textures" / thumbnail_filename
-        original_size = self.image_processor.create_thumbnail(image_data, thumbnail_path)
+        thumbnail_path = (
+            self.output_dir / "thumbnails" / "textures" / thumbnail_filename
+        )
+        original_size = self.image_processor.create_thumbnail(
+            image_data, thumbnail_path
+        )
 
         # Extract dominant colors
         dominant_colors = extract_dominant_colors(image_data, num_colors=5)
 
         # Cache the processed data
         self._texture_hash_cache[content_hash] = {
-            'thumbnail_path': f"thumbnails/textures/{thumbnail_filename}",
-            'width': texture_data.get('width', original_size[0]),
-            'height': texture_data.get('height', original_size[1]),
-            'dominant_colors': dominant_colors,
+            "thumbnail_path": f"thumbnails/textures/{thumbnail_filename}",
+            "width": texture_data.get("width", original_size[0]),
+            "height": texture_data.get("height", original_size[1]),
+            "dominant_colors": dominant_colors,
         }
 
         # Generate tags
-        tags = generate_tags(texture_data['name'])
+        tags = generate_tags(texture_data["name"])
 
         texture = Texture(
-            name=texture_data['name'],
+            name=texture_data["name"],
             aliases=[],
             content_hash=content_hash,
             thumbnail_path=f"thumbnails/textures/{thumbnail_filename}",
-            type=texture_data.get('type', 'texture'),
-            width=texture_data.get('width', original_size[0]),
-            height=texture_data.get('height', original_size[1]),
+            type=texture_data.get("type", "texture"),
+            width=texture_data.get("width", original_size[0]),
+            height=texture_data.get("height", original_size[1]),
             dominant_colors=dominant_colors,
             tags=tags,
-            bundles=[texture_data['bundle']],
+            bundles=[texture_data["bundle"]],
             first_seen=self.fm_version,
             last_seen=self.fm_version,
         )
@@ -427,7 +460,9 @@ class CatalogueBuilder:
                 deduplicated_textures.append(texture)
 
         self.textures = deduplicated_textures
-        log.info(f"  Deduplicated {len(texture_names)} textures to {len(self.textures)}")
+        log.info(
+            f"  Deduplicated {len(texture_names)} textures to {len(self.textures)}"
+        )
 
     def _create_metadata(self) -> CatalogueMetadata:
         """Create catalogue metadata."""

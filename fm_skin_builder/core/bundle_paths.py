@@ -69,8 +69,7 @@ def infer_bundle_files(css_dir: Path) -> List[Path]:
 
     for base in candidates:
         if base.exists() and base.is_dir():
-            bundles = sorted(
-                [p for p in base.iterdir() if p.suffix == ".bundle"])
+            bundles = sorted([p for p in base.iterdir() if p.suffix == ".bundle"])
             if bundles:
                 log.info("Inferred bundles directory from FM install: %s", base)
                 return bundles

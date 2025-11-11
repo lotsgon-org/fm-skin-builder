@@ -117,7 +117,9 @@ def upload_catalogue(
             content_type = "image/webp"
 
         file_size_kb = file_path.stat().st_size / 1024
-        if file_count % 100 == 0 or file_size_kb > 100:  # Log every 100 files or large files
+        if (
+            file_count % 100 == 0 or file_size_kb > 100
+        ):  # Log every 100 files or large files
             print(f"  Uploading: {relative_path} ({file_size_kb:.1f} KB)")
 
         extra_args = {

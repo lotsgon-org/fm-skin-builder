@@ -11,29 +11,29 @@ from typing import List
 
 # Pattern matching rules for tag generation
 TAG_PATTERNS = {
-    'icon_': ['icon'],
-    'ico_': ['icon'],
-    'bg_': ['background'],
-    'background_': ['background'],
-    'btn_': ['button', 'ui'],
-    'button_': ['button', 'ui'],
-    '_player': ['player', 'person'],
-    '_team': ['team', 'club'],
-    '_staff': ['staff', 'person'],
-    '_club': ['club', 'team'],
-    '_star': ['star', 'rating'],
-    '_rating': ['rating'],
-    'grass': ['grass', 'pitch', 'field'],
-    'pitch': ['pitch', 'field'],
-    'primary': ['primary', 'main'],
-    'secondary': ['secondary', 'alternate'],
-    'header': ['header', 'ui'],
-    'footer': ['footer', 'ui'],
-    'menu': ['menu', 'ui'],
-    'panel': ['panel', 'ui'],
-    'card': ['card', 'ui'],
-    'badge': ['badge', 'icon'],
-    'avatar': ['avatar', 'person'],
+    "icon_": ["icon"],
+    "ico_": ["icon"],
+    "bg_": ["background"],
+    "background_": ["background"],
+    "btn_": ["button", "ui"],
+    "button_": ["button", "ui"],
+    "_player": ["player", "person"],
+    "_team": ["team", "club"],
+    "_staff": ["staff", "person"],
+    "_club": ["club", "team"],
+    "_star": ["star", "rating"],
+    "_rating": ["rating"],
+    "grass": ["grass", "pitch", "field"],
+    "pitch": ["pitch", "field"],
+    "primary": ["primary", "main"],
+    "secondary": ["secondary", "alternate"],
+    "header": ["header", "ui"],
+    "footer": ["footer", "ui"],
+    "menu": ["menu", "ui"],
+    "panel": ["panel", "ui"],
+    "card": ["card", "ui"],
+    "badge": ["badge", "icon"],
+    "avatar": ["avatar", "person"],
 }
 
 
@@ -57,7 +57,7 @@ def generate_tags(name: str) -> List[str]:
 
     # Split on common delimiters and add parts as tags
     # Support: underscores, hyphens, and camelCase
-    parts = re.split(r'[_\-]|(?<=[a-z])(?=[A-Z])', name)
+    parts = re.split(r"[_\-]|(?<=[a-z])(?=[A-Z])", name)
 
     for part in parts:
         if len(part) > 2:  # Skip very short parts
@@ -66,7 +66,7 @@ def generate_tags(name: str) -> List[str]:
                 tags.add(clean_part)
 
     # Remove generic/useless tags
-    remove_tags = {'the', 'and', 'or', 'for', 'to', 'of', 'in', 'on', 'at', 'by'}
+    remove_tags = {"the", "and", "or", "for", "to", "of", "in", "on", "at", "by"}
     tags = tags - remove_tags
 
     return sorted(list(tags))
@@ -83,10 +83,10 @@ def generate_css_tags(selector: str) -> List[str]:
         List of tags
     """
     # Remove leading . or #
-    clean = selector.lstrip('.#')
+    clean = selector.lstrip(".#")
 
     # Split by - or _
-    parts = re.split(r'[-_]', clean)
+    parts = re.split(r"[-_]", clean)
 
     tags = []
     for part in parts:

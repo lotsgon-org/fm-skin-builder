@@ -201,9 +201,7 @@ def update_metadata(
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="Update latest.json metadata in R2"
-    )
+    parser = argparse.ArgumentParser(description="Update latest.json metadata in R2")
     parser.add_argument(
         "--artifacts-dir",
         required=True,
@@ -212,12 +210,8 @@ def main():
     )
     parser.add_argument("--bucket", required=True, help="R2 bucket name")
     parser.add_argument("--version", required=True, help="Version string")
-    parser.add_argument(
-        "--beta", action="store_true", help="This is a beta release"
-    )
-    parser.add_argument(
-        "--notes", default="", help="Release notes (optional)"
-    )
+    parser.add_argument("--beta", action="store_true", help="This is a beta release")
+    parser.add_argument("--notes", default="", help="Release notes (optional)")
 
     args = parser.parse_args()
 

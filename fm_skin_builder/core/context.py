@@ -18,8 +18,7 @@ class PatchReport:
     assets_modified: Set[str] = field(default_factory=set)
     variables_patched: int = 0
     direct_patched: int = 0
-    selector_conflicts: list[tuple[str, str, int]
-                             ] = field(default_factory=list)
+    selector_conflicts: list[tuple[str, str, int]] = field(default_factory=list)
     dry_run: bool = False
     summary_lines: list[str] = field(default_factory=list)
     saved_path: Optional[Path] = None
@@ -76,21 +75,24 @@ class BundleContext:
         bundle_path_str = str(self.bundle_path)
         is_network_path = False
 
-        if os.name == 'nt':
+        if os.name == "nt":
             # Detect network paths:
             # - UNC paths: \\server\share\...
             # - Mapped drives (common network letters): P: through Z:
             # - WebDAV paths containing localhost@
-            if (bundle_path_str.startswith('\\\\') or
-                bundle_path_str[0:1] in 'PQRSTUVWXYZ' and bundle_path_str[1:2] == ':' or
-                'localhost@' in bundle_path_str):
+            if (
+                bundle_path_str.startswith("\\\\")
+                or bundle_path_str[0:1] in "PQRSTUVWXYZ"
+                and bundle_path_str[1:2] == ":"
+                or "localhost@" in bundle_path_str
+            ):
                 is_network_path = True
 
         if is_network_path:
             try:
                 # For Windows network paths, read the file into memory and load from bytes
                 # This bypasses fsspec's problematic network path handling
-                with open(self.bundle_path, 'rb') as f:
+                with open(self.bundle_path, "rb") as f:
                     bundle_data = f.read()
                 # UnityPy can load from bytes directly
                 self._env = UnityPy.load(bundle_data)
@@ -101,9 +103,9 @@ class BundleContext:
 
         # Normal path handling (local files, or if network read failed)
         bundle_str = str(self.bundle_path)
-        if os.name == 'nt':
+        if os.name == "nt":
             # On Windows, normalize path separators to forward slashes for fsspec
-            bundle_str = bundle_str.replace('\\', '/')
+            bundle_str = bundle_str.replace("\\", "/")
 
         self._env = self._loader(bundle_str)
 
@@ -160,7 +162,9 @@ class BundleContext:
             # Backup best-effort only.
             return
 
-    def _cleanup_stray_originals(self, out_dir: Path, name: str, ext: str, new_path: Path) -> None:
+    def _cleanup_stray_originals(
+        self, out_dir: Path, name: str, ext: str, new_path: Path
+    ) -> None:
         orig_out_file = out_dir / f"{name}{ext}"
         if orig_out_file.exists() and orig_out_file != new_path:
             try:

@@ -39,9 +39,7 @@ class ImageProcessor:
         self.thumbnail_size = thumbnail_size
         self.watermark_opacity = watermark_opacity
 
-    def create_thumbnail(
-        self, image_data: bytes, output_path: Path
-    ) -> Tuple[int, int]:
+    def create_thumbnail(self, image_data: bytes, output_path: Path) -> Tuple[int, int]:
         """
         Create a watermarked thumbnail from image data.
 
@@ -53,18 +51,20 @@ class ImageProcessor:
             Tuple of (width, height) of original image
         """
         # Load image
-        img = Image.open(BytesIO(image_data)).convert('RGBA')
+        img = Image.open(BytesIO(image_data)).convert("RGBA")
         original_size = img.size
 
         # Create thumbnail (maintain aspect ratio)
-        img.thumbnail((self.thumbnail_size, self.thumbnail_size), Image.Resampling.LANCZOS)
+        img.thumbnail(
+            (self.thumbnail_size, self.thumbnail_size), Image.Resampling.LANCZOS
+        )
 
         # Apply watermark
         watermarked = self._apply_watermark(img, image_data)
 
         # Save as WebP
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        watermarked.save(output_path, format='WEBP', quality=85)
+        watermarked.save(output_path, format="WEBP", quality=85)
 
         return original_size
 
@@ -101,7 +101,7 @@ class ImageProcessor:
                 output_width=icon_size,
                 output_height=icon_size,
             )
-            icon = Image.open(BytesIO(icon_png)).convert('RGBA')
+            icon = Image.open(BytesIO(icon_png)).convert("RGBA")
 
             # Apply opacity to icon
             alpha = icon.split()[3]

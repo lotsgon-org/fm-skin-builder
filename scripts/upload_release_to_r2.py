@@ -155,7 +155,9 @@ def main():
         help="Directory containing build artifacts",
     )
     parser.add_argument(
-        "--version", required=True, help="Version string (e.g., 0.1.0 or 0.1.0-beta.abc123)"
+        "--version",
+        required=True,
+        help="Version string (e.g., 0.1.0 or 0.1.0-beta.abc123)",
     )
     parser.add_argument("--bucket", required=True, help="R2 bucket name")
     parser.add_argument(

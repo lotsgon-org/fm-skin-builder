@@ -77,7 +77,10 @@ def upload_bundles(bundles_dir: Path, prefix: str):
         r2_key = f"{prefix}/{bundle_file.name}"
 
         file_size = bundle_file.stat().st_size
-        print(f"  Uploading: {bundle_file.name} ({file_size / 1024 / 1024:.1f} MB)... ", end="")
+        print(
+            f"  Uploading: {bundle_file.name} ({file_size / 1024 / 1024:.1f} MB)... ",
+            end="",
+        )
         sys.stdout.flush()
 
         try:

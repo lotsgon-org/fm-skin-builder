@@ -1,1 +1,2 @@
-def run(args): print('extract (stub)')
+def run(args):
+    print("extract (stub)")

@@ -31,13 +31,14 @@ except ImportError as e:
 
 
 logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(message)s"
+    level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s"
 )
 log = logging.getLogger(__name__)
 
 
-def extract_sprites_from_bundle(bundle_path: Path, output_dir: Path, scale: str = "") -> int:
+def extract_sprites_from_bundle(
+    bundle_path: Path, output_dir: Path, scale: str = ""
+) -> int:
     """Extract all sprites from a bundle as individual PNG files.
 
     Args:
@@ -65,6 +66,7 @@ def extract_sprites_from_bundle(bundle_path: Path, output_dir: Path, scale: str 
 
     # First, parse all sprite atlases to get sprite information
     from fm_skin_builder.core.textures import _parse_sprite_atlas
+
     sprite_atlas_map = _parse_sprite_atlas(env)
 
     if not sprite_atlas_map:
@@ -119,12 +121,12 @@ def extract_sprites_from_bundle(bundle_path: Path, output_dir: Path, scale: str 
             pil_bottom = pil_top + rect_height
 
             # Crop the sprite from the atlas
-            sprite_image = atlas_image.crop(
-                (pil_left, pil_top, pil_right, pil_bottom))
+            sprite_image = atlas_image.crop((pil_left, pil_top, pil_right, pil_bottom))
 
             # Sanitize filename (replace invalid characters)
-            safe_name = sprite_name.replace(
-                '/', '_').replace('\\', '_').replace(':', '_')
+            safe_name = (
+                sprite_name.replace("/", "_").replace("\\", "_").replace(":", "_")
+            )
             output_path = sprite_output_dir / f"{safe_name}.png"
 
             # Save the sprite
@@ -146,32 +148,25 @@ def main():
         description="Extract sprites from Unity sprite atlas bundles as PNG files"
     )
     parser.add_argument(
-        "--bundle",
-        type=Path,
-        help="Path to a specific bundle file to extract"
+        "--bundle", type=Path, help="Path to a specific bundle file to extract"
     )
     parser.add_argument(
-        "--bundle-dir",
-        type=Path,
-        help="Directory containing bundle files"
+        "--bundle-dir", type=Path, help="Directory containing bundle files"
     )
     parser.add_argument(
         "--pattern",
         default="ui-iconspriteatlases_assets_*.bundle",
-        help="Glob pattern to match bundle files (default: ui-iconspriteatlases_assets_*.bundle)"
+        help="Glob pattern to match bundle files (default: ui-iconspriteatlases_assets_*.bundle)",
     )
     parser.add_argument(
         "--output",
         "-o",
         type=Path,
         default=Path("extracted_sprites"),
-        help="Output directory for extracted PNG files (default: extracted_sprites)"
+        help="Output directory for extracted PNG files (default: extracted_sprites)",
     )
     parser.add_argument(
-        "--verbose",
-        "-v",
-        action="store_true",
-        help="Enable verbose logging"
+        "--verbose", "-v", action="store_true", help="Enable verbose logging"
     )
 
     args = parser.parse_args()
@@ -216,8 +211,7 @@ def main():
     log.info("=" * 80)
 
     for bundle_path, scale in bundles_to_process:
-        extracted = extract_sprites_from_bundle(
-            bundle_path, args.output, scale)
+        extracted = extract_sprites_from_bundle(bundle_path, args.output, scale)
         total_extracted += extracted
 
     log.info("=" * 80)

@@ -46,7 +46,9 @@ def create_circle_mesh(
     return vertices, indices
 
 
-def create_square_mesh(size: float = 0.5) -> Tuple[List[Tuple[float, float, float]], List[int]]:
+def create_square_mesh(
+    size: float = 0.5,
+) -> Tuple[List[Tuple[float, float, float]], List[int]]:
     """Create a unit square centred at the origin."""
 
     half = size if size > 0 else 0.5
@@ -87,7 +89,9 @@ def svg_path_to_mesh(
         # Ensure the path is closed by appending the final point if necessary
         last_point = path.point(1.0)
         end = (float(last_point.real), float(last_point.imag))
-        if not points or (abs(points[0][0] - end[0]) > 1e-5 or abs(points[0][1] - end[1]) > 1e-5):
+        if not points or (
+            abs(points[0][0] - end[0]) > 1e-5 or abs(points[0][1] - end[1]) > 1e-5
+        ):
             points.append(end)
 
         # Deduplicate consecutive duplicates
@@ -171,7 +175,10 @@ def _fit_positions_to_sprite(
     scale_x = width_units / mesh_width
     scale_y = height_units / mesh_height
     if scale_override < 0:
-        log.warning("Negative scale_override (%f) is invalid; using 1e-6 instead.", scale_override)
+        log.warning(
+            "Negative scale_override (%f) is invalid; using 1e-6 instead.",
+            scale_override,
+        )
         scale_override_used = 1e-6
     else:
         scale_override_used = scale_override
@@ -193,7 +200,10 @@ def _fit_positions_to_sprite(
 
 
 def replace_vector_sprite(
-    sprite_obj, shape: str = "circle", color: Optional[Tuple[int, int, int, int]] = None, **kwargs
+    sprite_obj,
+    shape: str = "circle",
+    color: Optional[Tuple[int, int, int, int]] = None,
+    **kwargs,
 ):
     """Replace a vector sprite's mesh data with a new shape.
 
@@ -237,7 +247,9 @@ def replace_vector_sprite(
         width_units = (rect.width or 0.0) / pixels_to_units
         height_units = (rect.height or 0.0) / pixels_to_units
         if width_units <= 0 or height_units <= 0:
-            log.warning("[VECTOR] Sprite '%s' has zero-sized rect; skipping", sprite_obj.m_Name)
+            log.warning(
+                "[VECTOR] Sprite '%s' has zero-sized rect; skipping", sprite_obj.m_Name
+            )
             return False
 
         pivot = getattr(sprite_obj, "m_Pivot", None)
@@ -255,7 +267,9 @@ def replace_vector_sprite(
 
         vertex_count = len(fitted_vertices)
         if vertex_count < 3:
-            log.warning("[VECTOR] Mesh for '%s' has insufficient vertices", sprite_obj.m_Name)
+            log.warning(
+                "[VECTOR] Mesh for '%s' has insufficient vertices", sprite_obj.m_Name
+            )
             return False
 
         vertex_data = _pack_vertex_data(fitted_vertices)
@@ -294,7 +308,9 @@ def replace_vector_sprite(
                     half_width = width_units * 0.5
                     half_height = height_units * 0.5
                     center = Vector3f(
-                        (0.5 - pivot_x) * width_units, (0.5 - pivot_y) * height_units, 0.0
+                        (0.5 - pivot_x) * width_units,
+                        (0.5 - pivot_y) * height_units,
+                        0.0,
                     )
                     extent = Vector3f(half_width, half_height, 0.0)
                     submesh.localAABB.m_Center = center

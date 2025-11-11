@@ -45,11 +45,10 @@ def test_texture_variant_awareness(tmp_path, monkeypatch, caplog, provided):
     # Skin with includes assets/icons
     skin = tmp_path / "skins" / "demo"
     (skin / "assets" / "icons").mkdir(parents=True)
-    (skin / "config.json").write_text(json.dumps({
-        "schema_version": 2,
-        "name": "Demo",
-        "includes": ["assets/icons"]
-    }), encoding="utf-8")
+    (skin / "config.json").write_text(
+        json.dumps({"schema_version": 2, "name": "Demo", "includes": ["assets/icons"]}),
+        encoding="utf-8",
+    )
 
     # Provide replacement image bytes
     (skin / "assets" / "icons" / "Logo.png").write_bytes(b"P0")
@@ -70,6 +69,7 @@ def test_texture_variant_awareness(tmp_path, monkeypatch, caplog, provided):
     # Wire both modules to same env
     from fm_skin_builder.core import css_patcher as cp
     from fm_skin_builder.core import textures as tx
+
     cp.UnityPy = SimpleNamespace(load=lambda path: env)
     tx.UnityPy = SimpleNamespace(load=lambda path: env)
 
@@ -82,7 +82,8 @@ def test_texture_variant_awareness(tmp_path, monkeypatch, caplog, provided):
         assert data2.saved is False
         assert data4.saved is False
         assert any(
-            "Only 1/3 variants provided" in rec.message for rec in caplog.records)
+            "Only 1/3 variants provided" in rec.message for rec in caplog.records
+        )
     else:
         run_patch(skin, out_dir, bundle=None, dry_run=False)
         assert data1.saved is True

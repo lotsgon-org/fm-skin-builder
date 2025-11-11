@@ -58,7 +58,9 @@ def merge_metadata(partial_dirs: List[Path]) -> Dict[str, Any]:
     generated_at = max(generated_times) if generated_times else None
 
     # Take other fields from the first partial (they should be the same)
-    first_metadata = load_json(partial_dirs[0] / "metadata.json") if partial_dirs else {}
+    first_metadata = (
+        load_json(partial_dirs[0] / "metadata.json") if partial_dirs else {}
+    )
 
     return {
         "catalogue_version": first_metadata.get("catalogue_version", 1),
