@@ -396,9 +396,7 @@ async fn run_python_task(
     let mut stdout_reader = BufReader::new(stdout).lines();
     let mut stderr_reader = BufReader::new(stderr).lines();
 
-    // Storage for complete output
-    let stdout_lines: Vec<String>;
-    let stderr_lines: Vec<String>;
+
 
     // Stream stdout
     eprintln!("[RUST] Spawning stdout reader task...");
@@ -508,7 +506,7 @@ async fn run_python_task(
 
     // Wait for all output to be consumed
     eprintln!("[RUST] Waiting for stdout task to complete...");
-    stdout_lines = stdout_task
+    let stdout_lines: Vec<String> = stdout_task
         .await
         .map_err(|error| {
             eprintln!("[RUST] ERROR: Failed to read stdout: {}", error);
@@ -517,7 +515,7 @@ async fn run_python_task(
     eprintln!("[RUST] Stdout task complete, got {} lines", stdout_lines.len());
 
     eprintln!("[RUST] Waiting for stderr task to complete...");
-    stderr_lines = stderr_task
+    let stderr_lines: Vec<String> = stderr_task
         .await
         .map_err(|error| {
             eprintln!("[RUST] ERROR: Failed to read stderr: {}", error);
@@ -537,12 +535,10 @@ async fn run_python_task(
         } else {
             "✓ Build completed successfully. All bundles have been created.".to_string()
         }
+    } else if config.dry_run {
+        format!("✗ Preview failed with exit code {}. Check the logs for details.", exit_code)
     } else {
-        if config.dry_run {
-            format!("✗ Preview failed with exit code {}. Check the logs for details.", exit_code)
-        } else {
-            format!("✗ Build failed with exit code {}. Check the logs for details.", exit_code)
-        }
+        format!("✗ Build failed with exit code {}. Check the logs for details.", exit_code)
     };
 
     window.emit(
