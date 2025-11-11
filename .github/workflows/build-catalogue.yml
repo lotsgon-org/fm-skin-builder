@@ -168,6 +168,8 @@ jobs:
     needs: [split, extract]
     runs-on: ubuntu-latest
     timeout-minutes: 30  # Merge should be fast
+    outputs:
+      version_dir: ${{ steps.set-output.outputs.version_dir }}
 
     steps:
       - name: Checkout repository
@@ -229,13 +231,20 @@ jobs:
             --partial-dirs $PARTIAL_DIRS \
             --output "$OUTPUT_DIR"
 
-      - name: Upload merged catalogue to R2
+      - name: Set output variables
+        id: set-output
         run: |
-          echo "Uploading merged catalogue to R2..."
+          VERSION_DIR="${{ github.event.inputs.fm_version }}-v${{ github.event.inputs.catalogue_version }}"
+          echo "version_dir=$VERSION_DIR" >> $GITHUB_OUTPUT
+
+      - name: Upload JSON files to R2
+        run: |
+          echo "Uploading JSON metadata files to R2..."
           python scripts/upload_catalogue_to_r2.py \
             --catalogue-dir "merged_catalogue/${{ github.event.inputs.fm_version }}-v${{ github.event.inputs.catalogue_version }}" \
             --fm-version "${{ github.event.inputs.fm_version }}" \
-            --catalogue-version "${{ github.event.inputs.catalogue_version }}"
+            --catalogue-version "${{ github.event.inputs.catalogue_version }}" \
+            --json-only
 
       - name: Upload merged catalogue as artifact
         uses: actions/upload-artifact@v4
@@ -264,3 +273,45 @@ jobs:
           else
             echo "⚠️  Warning: metadata.json not found at $CATALOGUE_DIR/metadata.json"
           fi
+
+  # Job 4: Upload thumbnails in parallel (by hash prefix)
+  upload-thumbnails:
+    name: Upload Thumbnails (${{ matrix.prefix }})
+    needs: merge
+    runs-on: ubuntu-latest
+    timeout-minutes: 20  # Per upload job
+    strategy:
+      fail-fast: false
+      max-parallel: 16
+      matrix:
+        prefix: ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'a', 'b', 'c', 'd', 'e', 'f']
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install boto3
+
+      - name: Download merged catalogue
+        uses: actions/download-artifact@v4
+        with:
+          name: catalogue-${{ github.event.inputs.fm_version }}-v${{ github.event.inputs.catalogue_version }}
+          path: merged_catalogue/
+
+      - name: Upload thumbnails for prefix ${{ matrix.prefix }}
+        run: |
+          echo "Uploading thumbnails starting with ${{ matrix.prefix }}..."
+          python scripts/upload_catalogue_to_r2.py \
+            --catalogue-dir "merged_catalogue/${{ needs.merge.outputs.version_dir }}" \
+            --fm-version "${{ github.event.inputs.fm_version }}" \
+            --catalogue-version "${{ github.event.inputs.catalogue_version }}" \
+            --thumbnails-only \
+            --hash-prefix "${{ matrix.prefix }}"
