@@ -50,7 +50,7 @@ def diagnose_bundle(bundle_path: Path):
                 print(f"      Format Value: {format_value}")
 
             # Try to access image - this is where crashes happen
-            print(f"      Attempting to access .image property...", end=" ")
+            print("      Attempting to access .image property...", end=" ")
             sys.stdout.flush()
 
             try:

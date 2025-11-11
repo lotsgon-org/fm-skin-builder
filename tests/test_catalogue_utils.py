@@ -2,7 +2,6 @@
 Test catalogue utility functions.
 """
 
-import pytest
 
 from fm_skin_builder.core.catalogue.auto_tagger import generate_tags, generate_css_tags
 from fm_skin_builder.core.catalogue.color_search import hex_to_rgb, rgb_to_lab, color_distance

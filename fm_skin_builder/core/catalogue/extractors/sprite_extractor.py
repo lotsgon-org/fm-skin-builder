@@ -10,7 +10,6 @@ from typing import List, Dict, Any, Optional
 import UnityPy
 
 from .base import BaseAssetExtractor
-from ..models import Sprite
 
 
 class SpriteExtractor(BaseAssetExtractor):
@@ -33,7 +32,7 @@ class SpriteExtractor(BaseAssetExtractor):
 
         try:
             env = UnityPy.load(str(bundle_path))
-        except Exception as e:
+        except Exception:
             # If we can't load the bundle, return empty list
             return sprites
 
@@ -91,7 +90,7 @@ class SpriteExtractor(BaseAssetExtractor):
             # Clean up UnityPy environment
             try:
                 del env
-            except:
+            except Exception:
                 pass
             gc.collect()
 
@@ -198,7 +197,7 @@ class SpriteExtractor(BaseAssetExtractor):
                 # Clean up
                 del img_copy
                 del buf
-        except Exception as e:
+        except Exception:
             # Image extraction failed, continue without image data
             # Don't fail the entire extraction for one bad image
             pass

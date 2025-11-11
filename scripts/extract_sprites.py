@@ -14,10 +14,9 @@ Usage:
 
 import argparse
 import sys
-import os
 import logging
 from pathlib import Path
-from typing import List, Dict, Tuple, Optional, NamedTuple
+from typing import List, Dict, Tuple
 import glob
 
 # Add parent directory to path for imports
@@ -25,7 +24,6 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 try:
     import UnityPy
-    from PIL import Image
 except ImportError as e:
     print(f"Error: Missing required dependency: {e}")
     print("Install with: pip install UnityPy Pillow")
@@ -106,7 +104,6 @@ def extract_sprites_from_bundle(bundle_path: Path, output_dir: Path, scale: str 
                 log.debug(f"Could not get image for sprite '{sprite_name}'")
                 continue
 
-            atlas_width = atlas_image.width
             atlas_height = atlas_image.height
 
             # Extract sprite rect from atlas info
