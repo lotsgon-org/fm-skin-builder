@@ -170,23 +170,39 @@ async fn run_python_task(
     config: TaskConfig,
     state: State<'_, ProcessState>,
 ) -> Result<CommandResult, String> {
+    eprintln!("[RUST] run_python_task called!");
+    eprintln!("[RUST] Config: skin_path={}, bundles_path={}, dry_run={}",
+        config.skin_path, config.bundles_path, config.dry_run);
+
     // Emit startup event - check for errors
+    eprintln!("[RUST] About to emit task_started event...");
     app_handle.emit(
         "task_started",
         TaskStartedEvent {
             message: "Initializing backend...".to_string(),
         },
-    ).map_err(|e| format!("Failed to emit task_started: {}", e))?;
+    ).map_err(|e| {
+        eprintln!("[RUST] ERROR: Failed to emit task_started: {}", e);
+        format!("Failed to emit task_started: {}", e)
+    })?;
+    eprintln!("[RUST] task_started event emitted successfully");
 
+    eprintln!("[RUST] About to emit build_log (validating)...");
     app_handle.emit(
         "build_log",
         LogEvent {
             message: "Validating configuration...".to_string(),
             level: "info".to_string(),
         },
-    ).map_err(|e| format!("Failed to emit build_log: {}", e))?;
+    ).map_err(|e| {
+        eprintln!("[RUST] ERROR: Failed to emit build_log: {}", e);
+        format!("Failed to emit build_log: {}", e)
+    })?;
+    eprintln!("[RUST] build_log emitted successfully");
 
+    eprintln!("[RUST] Building CLI args...");
     let cli_args = build_cli_args(&config).map_err(|e| {
+        eprintln!("[RUST] ERROR: Failed to build CLI args: {}", e);
         let err_msg = format!("Configuration error: {}", e);
         let _ = app_handle.emit(
             "build_log",
@@ -197,6 +213,7 @@ async fn run_python_task(
         );
         err_msg
     })?;
+    eprintln!("[RUST] CLI args built: {:?}", cli_args);
 
     // Emit status update
     app_handle.emit(
@@ -277,18 +294,25 @@ async fn run_python_task(
         command.creation_flags(CREATE_NO_WINDOW);
     }
 
+    eprintln!("[RUST] About to emit spawning message...");
     app_handle.emit(
         "build_log",
         LogEvent {
             message: format!("Spawning process with args: {:?}", cli_args),
             level: "info".to_string(),
         },
-    ).map_err(|e| format!("Failed to emit: {}", e))?;
+    ).map_err(|e| {
+        eprintln!("[RUST] ERROR: Failed to emit: {}", e);
+        format!("Failed to emit: {}", e)
+    })?;
+    eprintln!("[RUST] Spawning message emitted");
 
     // Spawn the process
+    eprintln!("[RUST] About to spawn child process...");
     let mut child = command
         .spawn()
         .map_err(|error| {
+            eprintln!("[RUST] ERROR: Failed to spawn process: {}", error);
             let err_msg = format!("Failed to spawn Python process: {}. Check that Python is installed and accessible.", error);
             let _ = app_handle.emit(
                 "build_log",
@@ -299,6 +323,7 @@ async fn run_python_task(
             );
             err_msg
         })?;
+    eprintln!("[RUST] Child process spawned successfully!");
 
     // Emit that backend has started
     app_handle.emit(
@@ -310,7 +335,9 @@ async fn run_python_task(
     ).map_err(|e| format!("Failed to emit: {}", e))?;
 
     // CRITICAL: Take stdout and stderr BEFORE storing the child in the mutex
+    eprintln!("[RUST] Taking stdout from child...");
     let stdout = child.stdout.take().ok_or_else(|| {
+        eprintln!("[RUST] ERROR: Failed to capture stdout");
         let err_msg = "Failed to capture stdout".to_string();
         let _ = app_handle.emit(
             "build_log",
@@ -321,8 +348,11 @@ async fn run_python_task(
         );
         err_msg
     })?;
+    eprintln!("[RUST] Stdout captured");
 
+    eprintln!("[RUST] Taking stderr from child...");
     let stderr = child.stderr.take().ok_or_else(|| {
+        eprintln!("[RUST] ERROR: Failed to capture stderr");
         let err_msg = "Failed to capture stderr".to_string();
         let _ = app_handle.emit(
             "build_log",
@@ -333,12 +363,16 @@ async fn run_python_task(
         );
         err_msg
     })?;
+    eprintln!("[RUST] Stderr captured");
 
     // NOW store child process for potential cancellation (after taking stdout/stderr)
+    eprintln!("[RUST] About to lock mutex and store child...");
     {
         let mut child_guard = state.child.lock().await;
         *child_guard = Some(child);
+        eprintln!("[RUST] Child stored in mutex");
     }
+    eprintln!("[RUST] Mutex lock released");
 
     // Create buffered readers
     let mut stdout_reader = BufReader::new(stdout).lines();
@@ -349,10 +383,13 @@ async fn run_python_task(
     let stderr_lines: Vec<String>;
 
     // Stream stdout
+    eprintln!("[RUST] Spawning stdout reader task...");
     let app_handle_stdout = app_handle.clone();
     let stdout_task = tokio::spawn(async move {
+        eprintln!("[RUST STDOUT TASK] Started reading stdout...");
         let mut lines = Vec::new();
         while let Ok(Some(line)) = stdout_reader.next_line().await {
+            eprintln!("[RUST STDOUT] {}", line);
             lines.push(line.clone());
 
             // Parse for progress information
@@ -379,8 +416,10 @@ async fn run_python_task(
                 },
             );
         }
+        eprintln!("[RUST STDOUT TASK] Finished reading stdout, {} lines", lines.len());
         lines
     });
+    eprintln!("[RUST] Stdout reader task spawned");
 
     // Stream stderr
     let app_handle_stderr = app_handle.clone();
@@ -402,15 +441,20 @@ async fn run_python_task(
     });
 
     // Wait for process to complete
+    eprintln!("[RUST] About to wait for child process to complete...");
     let exit_status = {
         let child_ref = state.child.clone();
+        eprintln!("[RUST] Acquiring mutex lock to get child...");
         let mut child_guard = child_ref.lock().await;
+        eprintln!("[RUST] Mutex lock acquired");
 
         if let Some(child_mut) = child_guard.as_mut() {
+            eprintln!("[RUST] Child found in mutex, calling wait()...");
             let status = child_mut
                 .wait()
                 .await
                 .map_err(|error| {
+                    eprintln!("[RUST] ERROR: Failed to wait for process: {}", error);
                     let err_msg = format!("Failed to wait for process: {error}");
                     let _ = app_handle.emit(
                         "build_log",
@@ -421,11 +465,14 @@ async fn run_python_task(
                     );
                     err_msg
                 })?;
+            eprintln!("[RUST] Child process completed with status: {:?}", status);
 
             // Clear the stored child process
             *child_guard = None;
+            eprintln!("[RUST] Child cleared from mutex");
             status
         } else {
+            eprintln!("[RUST] ERROR: Child not found in mutex (was cancelled?)");
             let err_msg = "Child process was cancelled".to_string();
             let _ = app_handle.emit(
                 "build_log",
@@ -437,19 +484,33 @@ async fn run_python_task(
             return Err(err_msg);
         }
     };
+    eprintln!("[RUST] Mutex lock released after wait");
 
     // Wait for all output to be consumed
+    eprintln!("[RUST] Waiting for stdout task to complete...");
     stdout_lines = stdout_task
         .await
-        .map_err(|error| format!("Failed to read stdout: {error}"))?;
+        .map_err(|error| {
+            eprintln!("[RUST] ERROR: Failed to read stdout: {}", error);
+            format!("Failed to read stdout: {error}")
+        })?;
+    eprintln!("[RUST] Stdout task complete, got {} lines", stdout_lines.len());
+
+    eprintln!("[RUST] Waiting for stderr task to complete...");
     stderr_lines = stderr_task
         .await
-        .map_err(|error| format!("Failed to read stderr: {error}"))?;
+        .map_err(|error| {
+            eprintln!("[RUST] ERROR: Failed to read stderr: {}", error);
+            format!("Failed to read stderr: {error}")
+        })?;
+    eprintln!("[RUST] Stderr task complete, got {} lines", stderr_lines.len());
 
     let exit_code = exit_status.code().unwrap_or(-1);
     let success = exit_status.success();
+    eprintln!("[RUST] Process exit code: {}, success: {}", exit_code, success);
 
     // Emit completion event
+    eprintln!("[RUST] Emitting build_complete event...");
     app_handle.emit(
         "build_complete",
         CompletionEvent {
@@ -461,8 +522,13 @@ async fn run_python_task(
                 format!("Build failed with exit code {}", exit_code)
             },
         },
-    ).map_err(|e| format!("Failed to emit completion: {}", e))?;
+    ).map_err(|e| {
+        eprintln!("[RUST] ERROR: Failed to emit completion: {}", e);
+        format!("Failed to emit completion: {}", e)
+    })?;
+    eprintln!("[RUST] build_complete event emitted");
 
+    eprintln!("[RUST] run_python_task returning successfully");
     Ok(CommandResult {
         stdout: stdout_lines.join("\n"),
         stderr: stderr_lines.join("\n"),
