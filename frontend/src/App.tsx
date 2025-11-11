@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { Folder, Play, Package, Bug, Loader2, Terminal } from 'lucide-react';
+import { listen } from '@tauri-apps/api/event';
+import { Folder, Play, Package, Bug, Loader2, Terminal, CheckCircle2, XCircle } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -29,6 +30,20 @@ type TaskConfig = {
   dryRun: boolean;
 };
 
+type LogLevel = 'info' | 'error' | 'warning';
+
+type LogEntry = {
+  message: string;
+  level: LogLevel;
+  timestamp: string;
+};
+
+type BuildProgress = {
+  current: number;
+  total: number;
+  status: string;
+};
+
 const detectTauriRuntime = () => {
   if (typeof window === 'undefined') {
     return 'unknown' as const;
@@ -55,9 +70,13 @@ function App() {
   const [skinPath, setSkinPath] = useState('skins/test_skin');
   const [bundlesPath, setBundlesPath] = useState('bundles');
   const [debugMode, setDebugMode] = useState(false);
-  const [logs, setLogs] = useState<string[]>(['Ready to build']);
+  const [logs, setLogs] = useState<LogEntry[]>([
+    { message: 'Ready to build', level: 'info', timestamp: new Date().toLocaleTimeString() }
+  ]);
   const [isRunning, setIsRunning] = useState(false);
   const [currentTask, setCurrentTask] = useState<string | null>(null);
+  const [buildProgress, setBuildProgress] = useState<BuildProgress | null>(null);
+  const [lastBuildSuccess, setLastBuildSuccess] = useState<boolean | null>(null);
   const [runtimeState, setRuntimeState] = useState<'unknown' | 'preview' | 'ready'>(
     () => detectTauriRuntime()
   );
@@ -73,13 +92,80 @@ function App() {
     logsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [logs]);
 
+  // Set up event listeners for real-time build feedback
+  useEffect(() => {
+    let unlistenLog: (() => void) | null = null;
+    let unlistenProgress: (() => void) | null = null;
+    let unlistenComplete: (() => void) | null = null;
+
+    const setupListeners = async () => {
+      // Listen for log events
+      unlistenLog = await listen<{ message: string; level: string }>(
+        'build_log',
+        (event) => {
+          const timestamp = new Date().toLocaleTimeString();
+          setLogs((prev) => [
+            ...prev,
+            {
+              message: event.payload.message,
+              level: event.payload.level as LogLevel,
+              timestamp,
+            },
+          ]);
+        }
+      );
+
+      // Listen for progress events
+      unlistenProgress = await listen<{ current: number; total: number; status: string }>(
+        'build_progress',
+        (event) => {
+          setBuildProgress({
+            current: event.payload.current,
+            total: event.payload.total,
+            status: event.payload.status,
+          });
+        }
+      );
+
+      // Listen for completion events
+      unlistenComplete = await listen<{ success: boolean; exit_code: number; message: string }>(
+        'build_complete',
+        (event) => {
+          setIsRunning(false);
+          setCurrentTask(null);
+          setLastBuildSuccess(event.payload.success);
+          setBuildProgress(null);
+
+          const timestamp = new Date().toLocaleTimeString();
+          setLogs((prev) => [
+            ...prev,
+            {
+              message: event.payload.message,
+              level: event.payload.success ? 'info' : 'error',
+              timestamp,
+            },
+          ]);
+        }
+      );
+    };
+
+    setupListeners();
+
+    // Cleanup listeners on unmount
+    return () => {
+      if (unlistenLog) unlistenLog();
+      if (unlistenProgress) unlistenProgress();
+      if (unlistenComplete) unlistenComplete();
+    };
+  }, []);
+
   const markRuntimeReady = useCallback(() => {
     setRuntimeState('ready');
   }, []);
 
-  const appendLog = useCallback((line: string) => {
+  const appendLog = useCallback((message: string, level: LogLevel = 'info') => {
     const timestamp = new Date().toLocaleTimeString();
-    setLogs((prev) => [...prev, `[${timestamp}] ${line}`]);
+    setLogs((prev) => [...prev, { message, level, timestamp }]);
   }, []);
 
   const buildConfig = useCallback(
@@ -111,7 +197,7 @@ function App() {
           }
         }
       } catch (error) {
-        appendLog(`Folder picker failed: ${String(error)}`);
+        appendLog(`Folder picker failed: ${String(error)}`, 'error');
         setActiveTab('logs');
       }
     },
@@ -122,12 +208,14 @@ function App() {
     async (mode: TaskMode) => {
       const config = buildConfig(mode);
       if (!config.skinPath) {
-        appendLog('ERROR: Skin folder is required.');
+        appendLog('ERROR: Skin folder is required.', 'error');
         setActiveTab('logs');
         return;
       }
 
       setIsRunning(true);
+      setLastBuildSuccess(null);
+      setBuildProgress(null);
       setCurrentTask(mode === 'preview' ? 'Previewing Build' : 'Building Bundles');
       setActiveTab('logs');
 
@@ -138,37 +226,38 @@ function App() {
       }
 
       try {
+        // The command will now stream logs in real-time via events
         const response = await invoke<CommandResult>('run_python_task', {
           config
         });
         markRuntimeReady();
 
+        // Note: Most logs are already displayed via events, but we handle
+        // any remaining output here for backward compatibility
         if (response.stdout.trim().length) {
           const lines = response.stdout.trim().split('\n');
-          lines.forEach((line) => appendLog(line));
-        }
-        if (response.stderr.trim().length) {
-          const lines = response.stderr.trim().split('\n');
-          lines.forEach((line) => appendLog(`[STDERR] ${line}`));
-        }
-
-        if (response.status === 0) {
-          appendLog(`✓ Process completed successfully`);
-        } else {
-          appendLog(`✗ Process exited with status ${response.status}`);
+          // Filter out lines we've already shown via events
+          const newLines = lines.filter(line => {
+            // Simple dedup: if the last 10 logs contain this line, skip it
+            const recent = logs.slice(-10).map(l => l.message);
+            return !recent.includes(line);
+          });
+          newLines.forEach((line) => appendLog(line));
         }
       } catch (error) {
-        appendLog(`✗ Command failed: ${String(error)}`);
-      } finally {
+        appendLog(`✗ Command failed: ${String(error)}`, 'error');
         setIsRunning(false);
         setCurrentTask(null);
+        setLastBuildSuccess(false);
       }
     },
-    [appendLog, buildConfig, markRuntimeReady]
+    [appendLog, buildConfig, markRuntimeReady, logs]
   );
 
   const clearLogs = useCallback(() => {
-    setLogs(['Ready to build']);
+    setLogs([{ message: 'Ready to build', level: 'info', timestamp: new Date().toLocaleTimeString() }]);
+    setLastBuildSuccess(null);
+    setBuildProgress(null);
   }, []);
 
   const runtimeIndicator = useMemo(() => {
@@ -181,6 +270,11 @@ function App() {
         return { color: 'bg-muted-foreground', label: 'Detecting Runtime' };
     }
   }, [runtimeState]);
+
+  const progressPercentage = useMemo(() => {
+    if (!buildProgress || buildProgress.total === 0) return 0;
+    return Math.round((buildProgress.current / buildProgress.total) * 100);
+  }, [buildProgress]);
 
   return (
     <div className="min-h-screen bg-background">
@@ -335,26 +429,75 @@ function App() {
                 </div>
               </CardContent>
             </Card>
+
+            {/* Last Build Status */}
+            {lastBuildSuccess !== null && (
+              <Card className={lastBuildSuccess ? 'border-green-500/50 bg-green-500/5' : 'border-red-500/50 bg-red-500/5'}>
+                <CardContent className="pt-6">
+                  <div className="flex items-center gap-3">
+                    {lastBuildSuccess ? (
+                      <>
+                        <CheckCircle2 className="h-6 w-6 text-green-600 dark:text-green-400" />
+                        <div>
+                          <p className="font-semibold text-green-600 dark:text-green-400">Build Successful</p>
+                          <p className="text-sm text-muted-foreground">Your skin has been built successfully</p>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <XCircle className="h-6 w-6 text-red-600 dark:text-red-400" />
+                        <div>
+                          <p className="font-semibold text-red-600 dark:text-red-400">Build Failed</p>
+                          <p className="text-sm text-muted-foreground">Check the logs for error details</p>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
           </TabsContent>
 
           <TabsContent value="logs" className="space-y-4">
+            {/* Progress Card */}
             {isRunning && (
               <Card className="border-primary/50 bg-primary/5">
                 <CardContent className="pt-6">
-                  <div className="space-y-2">
+                  <div className="space-y-3">
                     <div className="flex items-center justify-between text-sm">
                       <span className="font-medium">{currentTask}</span>
                       <Loader2 className="h-4 w-4 animate-spin text-primary" />
                     </div>
-                    <Progress value={undefined} className="h-2" />
-                    <p className="text-xs text-muted-foreground">
-                      Processing... Check logs below for details
-                    </p>
+
+                    {buildProgress && buildProgress.total > 0 ? (
+                      <>
+                        <div className="space-y-1">
+                          <div className="flex items-center justify-between text-xs text-muted-foreground">
+                            <span>
+                              Bundle {buildProgress.current} of {buildProgress.total}
+                            </span>
+                            <span>{progressPercentage}%</span>
+                          </div>
+                          <Progress value={progressPercentage} className="h-2" />
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          {buildProgress.status}
+                        </p>
+                      </>
+                    ) : (
+                      <>
+                        <Progress value={undefined} className="h-2" />
+                        <p className="text-xs text-muted-foreground">
+                          Processing... Check logs below for details
+                        </p>
+                      </>
+                    )}
                   </div>
                 </CardContent>
               </Card>
             )}
 
+            {/* Logs Card */}
             <Card>
               <CardHeader>
                 <div className="flex items-center justify-between">
@@ -374,16 +517,16 @@ function App() {
                       <div
                         key={index}
                         className={
-                          log.includes('ERROR') || log.includes('✗')
+                          log.level === 'error'
                             ? 'text-destructive'
-                            : log.includes('✓')
-                              ? 'text-green-600 dark:text-green-400'
-                              : log.includes('[STDERR]')
-                                ? 'text-yellow-600 dark:text-yellow-400'
+                            : log.level === 'warning'
+                              ? 'text-yellow-600 dark:text-yellow-400'
+                              : log.message.includes('✓') || log.message.includes('✅')
+                                ? 'text-green-600 dark:text-green-400'
                                 : 'text-foreground'
                         }
                       >
-                        {log}
+                        <span className="text-muted-foreground">[{log.timestamp}]</span> {log.message}
                       </div>
                     ))}
                     <div ref={logsEndRef} />

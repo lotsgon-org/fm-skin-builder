@@ -2,8 +2,30 @@
 
 use rfd::FileDialog;
 use serde::{Deserialize, Serialize};
-use std::{path::PathBuf, process::Command};
-use tauri::{path::BaseDirectory, AppHandle, Manager};
+use std::{path::PathBuf, process::Stdio};
+use tauri::{path::BaseDirectory, AppHandle, Emitter, Manager};
+use tokio::io::{AsyncBufReadExt, BufReader};
+use tokio::process::Command;
+
+#[derive(Serialize, Clone)]
+struct LogEvent {
+    message: String,
+    level: String, // "info", "error", "warning"
+}
+
+#[derive(Serialize, Clone)]
+struct ProgressEvent {
+    current: u32,
+    total: u32,
+    status: String,
+}
+
+#[derive(Serialize, Clone)]
+struct CompletionEvent {
+    success: bool,
+    exit_code: i32,
+    message: String,
+}
 
 #[derive(Serialize)]
 struct CommandResult {
@@ -76,10 +98,56 @@ fn build_cli_args(config: &TaskConfig) -> Result<Vec<String>, String> {
     Ok(args)
 }
 
+/// Parse progress information from log lines
+/// Expected format: "=== Patching bundle X of Y: path/to/bundle ==="
+/// Or: "🔍 Scanning bundle: name (X/Y)"
+fn parse_progress(line: &str) -> Option<(u32, u32, String)> {
+    // Pattern 1: "=== Patching bundle: path ===" followed by total count
+    if line.contains("=== Patching bundle:") {
+        // Try to extract bundle name
+        if let Some(start) = line.find("bundle:") {
+            let bundle_part = &line[start + 7..].trim();
+            if let Some(end) = bundle_part.find("===") {
+                let bundle_name = bundle_part[..end].trim();
+                return Some((0, 0, format!("Processing: {}", bundle_name)));
+            }
+        }
+    }
+
+    // Pattern 2: Look for progress indicators in format "X of Y" or "X/Y"
+    if line.contains(" of ") || line.contains("/") {
+        // Simple heuristic: if we see numbers in format "X of Y"
+        let words: Vec<&str> = line.split_whitespace().collect();
+        for i in 0..words.len().saturating_sub(2) {
+            if words[i + 1] == "of" {
+                if let (Ok(current), Ok(total)) = (words[i].parse::<u32>(), words[i + 2].parse::<u32>()) {
+                    let status = line.split("===").next().unwrap_or(line).trim().to_string();
+                    return Some((current, total, status));
+                }
+            }
+        }
+    }
+
+    None
+}
+
+/// Determine log level from line content
+fn get_log_level(line: &str) -> String {
+    let line_upper = line.to_uppercase();
+    if line_upper.contains("ERROR") || line_upper.contains("✗") || line_upper.contains("[STDERR]") {
+        "error".to_string()
+    } else if line_upper.contains("WARN") || line_upper.contains("WARNING") {
+        "warning".to_string()
+    } else {
+        "info".to_string()
+    }
+}
+
 #[tauri::command]
-fn run_python_task(app_handle: AppHandle, config: TaskConfig) -> Result<CommandResult, String> {
+async fn run_python_task(app_handle: AppHandle, config: TaskConfig) -> Result<CommandResult, String> {
     let cli_args = build_cli_args(&config)?;
 
+    // Build the command
     let mut command = if cfg!(debug_assertions) {
         let mut cmd = Command::new(python_command());
         cmd.arg("-m").arg("fm_skin_builder");
@@ -87,8 +155,6 @@ fn run_python_task(app_handle: AppHandle, config: TaskConfig) -> Result<CommandR
         cmd.env("PYTHONPATH", "fm_skin_builder");
         cmd
     } else {
-        // Determine binary name with correct extension
-        // Note: resources are bundled with their directory structure intact
         let binary_name = if cfg!(windows) {
             "resources/backend/fm_skin_builder.exe"
         } else {
@@ -112,15 +178,126 @@ fn run_python_task(app_handle: AppHandle, config: TaskConfig) -> Result<CommandR
     };
 
     command.args(&cli_args);
+    command.stdout(Stdio::piped());
+    command.stderr(Stdio::piped());
 
-    let output = command
-        .output()
-        .map_err(|error| format!("Failed to run backend: {error}"))?;
+    // Hide console window on Windows
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+        command.creation_flags(CREATE_NO_WINDOW);
+    }
+
+    // Spawn the process
+    let mut child = command
+        .spawn()
+        .map_err(|error| format!("Failed to spawn process: {error}"))?;
+
+    // Get stdout and stderr handles
+    let stdout = child.stdout.take().ok_or("Failed to capture stdout")?;
+    let stderr = child.stderr.take().ok_or("Failed to capture stderr")?;
+
+    // Create buffered readers
+    let mut stdout_reader = BufReader::new(stdout).lines();
+    let mut stderr_reader = BufReader::new(stderr).lines();
+
+    // Storage for complete output (for backward compatibility)
+    let mut stdout_lines = Vec::new();
+    let mut stderr_lines = Vec::new();
+
+    // Progress tracking
+    let mut current_progress = 0u32;
+    let mut total_progress = 0u32;
+
+    // Stream stdout
+    let app_handle_stdout = app_handle.clone();
+    let stdout_task = tokio::spawn(async move {
+        let mut lines = Vec::new();
+        while let Ok(Some(line)) = stdout_reader.next_line().await {
+            lines.push(line.clone());
+
+            // Parse for progress information
+            if let Some((current, total, status)) = parse_progress(&line) {
+                if total > 0 {
+                    let _ = app_handle_stdout.emit(
+                        "build_progress",
+                        ProgressEvent {
+                            current,
+                            total,
+                            status,
+                        },
+                    );
+                }
+            }
+
+            // Emit log event
+            let level = get_log_level(&line);
+            let _ = app_handle_stdout.emit(
+                "build_log",
+                LogEvent {
+                    message: line,
+                    level,
+                },
+            );
+        }
+        lines
+    });
+
+    // Stream stderr
+    let app_handle_stderr = app_handle.clone();
+    let stderr_task = tokio::spawn(async move {
+        let mut lines = Vec::new();
+        while let Ok(Some(line)) = stderr_reader.next_line().await {
+            lines.push(line.clone());
+
+            // Emit stderr as error log
+            let _ = app_handle_stderr.emit(
+                "build_log",
+                LogEvent {
+                    message: format!("[STDERR] {}", line),
+                    level: "error".to_string(),
+                },
+            );
+        }
+        lines
+    });
+
+    // Wait for process to complete
+    let exit_status = child
+        .wait()
+        .await
+        .map_err(|error| format!("Failed to wait for process: {error}"))?;
+
+    // Wait for all output to be consumed
+    stdout_lines = stdout_task
+        .await
+        .map_err(|error| format!("Failed to read stdout: {error}"))?;
+    stderr_lines = stderr_task
+        .await
+        .map_err(|error| format!("Failed to read stderr: {error}"))?;
+
+    let exit_code = exit_status.code().unwrap_or(-1);
+    let success = exit_status.success();
+
+    // Emit completion event
+    let _ = app_handle.emit(
+        "build_complete",
+        CompletionEvent {
+            success,
+            exit_code,
+            message: if success {
+                "Build completed successfully".to_string()
+            } else {
+                format!("Build failed with exit code {}", exit_code)
+            },
+        },
+    );
 
     Ok(CommandResult {
-        stdout: String::from_utf8_lossy(&output.stdout).to_string(),
-        stderr: String::from_utf8_lossy(&output.stderr).to_string(),
-        status: output.status.code().unwrap_or(-1),
+        stdout: stdout_lines.join("\n"),
+        stderr: stderr_lines.join("\n"),
+        status: exit_code,
     })
 }
 
@@ -143,6 +320,7 @@ fn select_folder(dialog_title: Option<String>, initial_path: Option<String>) -> 
         .map(|folder| folder.to_string_lossy().to_string())
 }
 
+#[cfg_attr(mobile, tauri::mobile_entry_point)]
 fn main() {
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![run_python_task, select_folder])
