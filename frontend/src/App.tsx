@@ -95,88 +95,130 @@ function App() {
 
   // Set up event listeners for real-time build feedback
   useEffect(() => {
+    console.log('[FRONTEND] useEffect for event listeners starting...');
     let unlistenLog: (() => void) | null = null;
     let unlistenProgress: (() => void) | null = null;
     let unlistenComplete: (() => void) | null = null;
     let unlistenTaskStarted: (() => void) | null = null;
+    let timeoutId: NodeJS.Timeout | null = null;
+    let setupComplete = false;
 
     const setupListeners = async () => {
-      // Listen for task started event
-      unlistenTaskStarted = await listen<{ message: string }>(
-        'task_started',
-        (event) => {
-          const timestamp = new Date().toLocaleTimeString();
-          setLogs((prev) => [
-            ...prev,
-            {
-              message: event.payload.message,
-              level: 'info',
-              timestamp,
-            },
-          ]);
-        }
-      );
+      console.log('[FRONTEND] setupListeners called');
 
-      // Listen for log events
-      unlistenLog = await listen<{ message: string; level: string }>(
-        'build_log',
-        (event) => {
-          const timestamp = new Date().toLocaleTimeString();
-          setLogs((prev) => [
-            ...prev,
-            {
-              message: event.payload.message,
-              level: event.payload.level as LogLevel,
-              timestamp,
-            },
-          ]);
-        }
-      );
+      try {
+        // Listen for task started event
+        console.log('[FRONTEND] Setting up task_started listener...');
+        unlistenTaskStarted = await listen<{ message: string }>(
+          'task_started',
+          (event) => {
+            console.log('[FRONTEND] task_started event received:', event.payload);
+            const timestamp = new Date().toLocaleTimeString();
+            setLogs((prev) => [
+              ...prev,
+              {
+                message: event.payload.message,
+                level: 'info',
+                timestamp,
+              },
+            ]);
+          }
+        );
+        console.log('[FRONTEND] task_started listener set up');
 
-      // Listen for progress events
-      unlistenProgress = await listen<{ current: number; total: number; status: string }>(
-        'build_progress',
-        (event) => {
-          setBuildProgress({
-            current: event.payload.current,
-            total: event.payload.total,
-            status: event.payload.status,
-          });
-        }
-      );
+        // Listen for log events
+        console.log('[FRONTEND] Setting up build_log listener...');
+        unlistenLog = await listen<{ message: string; level: string }>(
+          'build_log',
+          (event) => {
+            console.log('[FRONTEND] build_log event received:', event.payload.message);
+            const timestamp = new Date().toLocaleTimeString();
+            setLogs((prev) => [
+              ...prev,
+              {
+                message: event.payload.message,
+                level: event.payload.level as LogLevel,
+                timestamp,
+              },
+            ]);
+          }
+        );
+        console.log('[FRONTEND] build_log listener set up');
 
-      // Listen for completion events
-      unlistenComplete = await listen<{ success: boolean; exit_code: number; message: string }>(
-        'build_complete',
-        (event) => {
-          setIsRunning(false);
-          setCurrentTask(null);
-          setLastBuildSuccess(event.payload.success);
-          setBuildProgress(null);
+        // Listen for progress events
+        console.log('[FRONTEND] Setting up build_progress listener...');
+        unlistenProgress = await listen<{ current: number; total: number; status: string }>(
+          'build_progress',
+          (event) => {
+            console.log('[FRONTEND] build_progress event received:', event.payload);
+            setBuildProgress({
+              current: event.payload.current,
+              total: event.payload.total,
+              status: event.payload.status,
+            });
+          }
+        );
+        console.log('[FRONTEND] build_progress listener set up');
 
-          const timestamp = new Date().toLocaleTimeString();
-          setLogs((prev) => [
-            ...prev,
-            {
-              message: event.payload.message,
-              level: event.payload.success ? 'info' : 'error',
-              timestamp,
-            },
-          ]);
-        }
-      );
+        // Listen for completion events
+        console.log('[FRONTEND] Setting up build_complete listener...');
+        unlistenComplete = await listen<{ success: boolean; exit_code: number; message: string }>(
+          'build_complete',
+          (event) => {
+            console.log('[FRONTEND] build_complete event received:', event.payload);
+            setIsRunning(false);
+            setCurrentTask(null);
+            setLastBuildSuccess(event.payload.success);
+            setBuildProgress(null);
+
+            const timestamp = new Date().toLocaleTimeString();
+            setLogs((prev) => [
+              ...prev,
+              {
+                message: event.payload.message,
+                level: event.payload.success ? 'info' : 'error',
+                timestamp,
+              },
+            ]);
+          }
+        );
+        console.log('[FRONTEND] build_complete listener set up');
+        console.log('[FRONTEND] All listeners configured successfully');
+      } catch (error) {
+        console.error('[FRONTEND] Error setting up listeners:', error);
+        throw error;
+      }
     };
 
+    // Set a timeout to ensure buttons don't stay disabled forever
+    timeoutId = setTimeout(() => {
+      if (!setupComplete) {
+        console.warn('[FRONTEND] Listener setup timeout - enabling buttons anyway');
+        setListenersReady(true);
+      }
+    }, 3000); // 3 second timeout
+
     // IMPORTANT: Wait for listeners to be set up before marking ready
-    setupListeners().then(() => {
-      console.log('[FRONTEND] All event listeners set up successfully');
-      setListenersReady(true);
-    }).catch((error) => {
-      console.error('[FRONTEND] Failed to set up event listeners:', error);
-    });
+    console.log('[FRONTEND] About to call setupListeners...');
+    setupListeners()
+      .then(() => {
+        console.log('[FRONTEND] All event listeners set up successfully');
+        setupComplete = true;
+        if (timeoutId) clearTimeout(timeoutId);
+        setListenersReady(true);
+      })
+      .catch((error) => {
+        console.error('[FRONTEND] Failed to set up event listeners:', error);
+        setupComplete = true;
+        if (timeoutId) clearTimeout(timeoutId);
+        // Set ready anyway so buttons aren't permanently stuck
+        setListenersReady(true);
+      });
 
     // Cleanup listeners on unmount
     return () => {
+      console.log('[FRONTEND] Cleaning up event listeners');
+      if (timeoutId) clearTimeout(timeoutId);
       if (unlistenLog) unlistenLog();
       if (unlistenProgress) unlistenProgress();
       if (unlistenComplete) unlistenComplete();
