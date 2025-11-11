@@ -145,74 +145,131 @@ class SpriteExtractor(BaseAssetExtractor):
         # Extract image data
         image_data = None
         try:
-            # NOTE: DO NOT use hasattr(sprite_obj, 'image') as it triggers property
-            # access which causes segfaults on macOS. Just try to access directly.
-
-            # Check texture format if available (sprites reference textures)
+            # Sprites reference textures via m_RD.texture
+            # We need to get the texture, then crop the sprite's rect from it
             texture_ref = getattr(sprite_obj, 'm_RD', None)
-            if texture_ref:
-                texture = getattr(texture_ref, 'texture', None)
-                if texture:
-                    # Get the actual texture object to check format
-                    try:
-                        tex_data = texture.read()
-                        tex_format = getattr(tex_data, 'm_TextureFormat', None)
+            if not texture_ref:
+                return {
+                    "name": name,
+                    "bundle": bundle_name,
+                    "has_vertex_data": has_vertex_data,
+                    "width": width,
+                    "height": height,
+                    "image_data": None,
+                    "atlas": None,
+                    **self._create_default_status(),
+                }
 
-                        # Skip problematic formats (same as texture extractor)
-                        problematic_formats = [48, 49, 50, 51, 52, 53, 34, 45, 46, 47, 26, 30, 31, 32, 33]
+            texture = getattr(texture_ref, 'texture', None)
+            if not texture:
+                return {
+                    "name": name,
+                    "bundle": bundle_name,
+                    "has_vertex_data": has_vertex_data,
+                    "width": width,
+                    "height": height,
+                    "image_data": None,
+                    "atlas": None,
+                    **self._create_default_status(),
+                }
 
-                        if tex_format in problematic_formats:
-                            return {
-                                "name": name,
-                                "bundle": bundle_name,
-                                "has_vertex_data": has_vertex_data,
-                                "width": width,
-                                "height": height,
-                                "image_data": None,
-                                "atlas": None,
-                                **self._create_default_status(),
-                            }
+            # Read the actual texture object
+            try:
+                tex_data = texture.read()
+                tex_format = getattr(tex_data, 'm_TextureFormat', None)
 
-                        # Also check by name if format is an enum
-                        if hasattr(tex_format, 'name'):
-                            format_name = tex_format.name
-                            if any(problematic in format_name for problematic in ['ASTC', 'ETC', 'PVRTC', 'BC7']):
-                                return {
-                                    "name": name,
-                                    "bundle": bundle_name,
-                                    "has_vertex_data": has_vertex_data,
-                                    "width": width,
-                                    "height": height,
-                                    "image_data": None,
-                                    "atlas": None,
-                                    **self._create_default_status(),
-                                }
-                    except Exception:
-                        # If we can't check the texture format, proceed cautiously
-                        pass
+                # Skip problematic formats (same as texture extractor)
+                problematic_formats = [48, 49, 50, 51, 52, 53, 34, 45, 46, 47, 26, 30, 31, 32, 33]
 
-            # Access image - this is where segfaults often occur
-            image = sprite_obj.image
-            if image:
-                # For large images, convert to thumbnail immediately to save memory
-                # Don't store full 4K+ images in memory
+                if tex_format in problematic_formats:
+                    return {
+                        "name": name,
+                        "bundle": bundle_name,
+                        "has_vertex_data": has_vertex_data,
+                        "width": width,
+                        "height": height,
+                        "image_data": None,
+                        "atlas": None,
+                        **self._create_default_status(),
+                    }
 
-                # Create a copy to avoid modifying original
-                img_copy = image.copy()
+                # Also check by name if format is an enum
+                if hasattr(tex_format, 'name'):
+                    format_name = tex_format.name
+                    if any(problematic in format_name for problematic in ['ASTC', 'ETC', 'PVRTC', 'BC7']):
+                        return {
+                            "name": name,
+                            "bundle": bundle_name,
+                            "has_vertex_data": has_vertex_data,
+                            "width": width,
+                            "height": height,
+                            "image_data": None,
+                            "atlas": None,
+                            **self._create_default_status(),
+                        }
 
-                # If image is very large, create thumbnail immediately
-                if img_copy.width > 2048 or img_copy.height > 2048:
-                    # Create thumbnail at 2048x2048 max (will be thumbnailed again to 256x256 later)
-                    img_copy.thumbnail((2048, 2048), Image.Resampling.LANCZOS)
+                # Get the texture image
+                texture_image = tex_data.image
+                if not texture_image:
+                    return {
+                        "name": name,
+                        "bundle": bundle_name,
+                        "has_vertex_data": has_vertex_data,
+                        "width": width,
+                        "height": height,
+                        "image_data": None,
+                        "atlas": None,
+                        **self._create_default_status(),
+                    }
+
+                # Crop the sprite's rect from the texture
+                # (standalone sprites work just like atlas sprites)
+                tex_width = texture_image.width
+                tex_height = texture_image.height
+
+                # Convert Unity bottom-left origin to PIL top-left origin
+                pil_top = tex_height - (rect.y + height)
+                pil_left = int(rect.x)
+                pil_right = int(rect.x + width)
+                pil_bottom = int(pil_top + height)
+
+                # Ensure bounds are valid
+                pil_top = max(0, int(pil_top))
+                pil_left = max(0, pil_left)
+                pil_right = min(tex_width, pil_right)
+                pil_bottom = min(tex_height, pil_bottom)
+
+                # Crop the sprite from the texture
+                sprite_image = texture_image.crop(
+                    (pil_left, pil_top, pil_right, pil_bottom)
+                )
+
+                # If image is very large, resize to save memory
+                if sprite_image.width > 2048 or sprite_image.height > 2048:
+                    sprite_image.thumbnail((2048, 2048), Image.Resampling.LANCZOS)
 
                 # Convert to PNG bytes
                 buf = io.BytesIO()
-                img_copy.save(buf, format='PNG')
+                sprite_image.save(buf, format='PNG')
                 image_data = buf.getvalue()
 
                 # Clean up
-                del img_copy
+                del sprite_image
                 del buf
+
+            except Exception:
+                # Texture extraction failed, return without image data
+                return {
+                    "name": name,
+                    "bundle": bundle_name,
+                    "has_vertex_data": has_vertex_data,
+                    "width": width,
+                    "height": height,
+                    "image_data": None,
+                    "atlas": None,
+                    **self._create_default_status(),
+                }
+
         except Exception as e:
             # Image extraction failed, continue without image data
             # Don't fail the entire extraction for one bad image
