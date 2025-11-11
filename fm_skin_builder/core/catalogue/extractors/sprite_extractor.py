@@ -13,7 +13,6 @@ from PIL import Image
 import io
 
 from .base import BaseAssetExtractor
-from ..models import Sprite
 from ...textures import _parse_sprite_atlas
 
 
@@ -97,7 +96,7 @@ class SpriteExtractor(BaseAssetExtractor):
                             # Skip problematic atlas sprites
                             continue
 
-            except Exception as e:
+            except Exception:
                 # If atlas parsing fails, continue with what we have
                 pass
 
@@ -266,7 +265,7 @@ class SpriteExtractor(BaseAssetExtractor):
                     **self._create_default_status(),
                 }
 
-        except Exception as e:
+        except Exception:
             # Image extraction failed, continue without image data
             # Don't fail the entire extraction for one bad image
             pass
@@ -322,7 +321,7 @@ class SpriteExtractor(BaseAssetExtractor):
             if not atlas_image:
                 return None
 
-            atlas_width = atlas_image.width
+            # atlas_width = atlas_image.width
             atlas_height = atlas_image.height
 
             # Extract sprite rect from atlas info
@@ -356,7 +355,7 @@ class SpriteExtractor(BaseAssetExtractor):
                 **self._create_default_status(),
             }
 
-        except Exception as e:
+        except Exception:
             # Failed to extract image, return sprite metadata without image
             return {
                 "name": sprite_name,
