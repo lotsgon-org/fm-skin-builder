@@ -1,0 +1,477 @@
+name: Build Application
+
+# Build on beta branch (for testing) and version tags (for releases)
+on:
+  push:
+    branches: [ beta ]  # Beta builds for testing
+    tags: [ 'v*' ]       # Release builds
+  workflow_dispatch:
+
+env:
+  PYTHON_VERSION: '3.10'
+
+jobs:
+  # Run tests first - builds only proceed if tests pass
+  test:
+    name: Run Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install Python dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install pytest
+
+      - name: Run Python tests
+        run: pytest -v
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Run frontend tests
+        working-directory: frontend
+        run: npm test
+
+  # Build Python backend once per platform and cache it
+  build-backend:
+    name: Build Backend - ${{ matrix.name }}
+    needs: test  # Only build if tests pass
+    strategy:
+      fail-fast: true  # Stop all if one fails (cost control)
+      matrix:
+        include:
+          - platform: ubuntu-latest
+            name: Linux
+          - platform: macos-15-intel
+            name: macOS
+          - platform: windows-latest
+            name: Windows
+
+    runs-on: ${{ matrix.platform }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt pyinstaller
+
+      - name: Install Cairo library (Linux)
+        if: matrix.platform == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libcairo2 libcairo2-dev
+
+      - name: Install Cairo library (macOS)
+        if: matrix.platform == 'macos-15-intel'
+        run: |
+          brew install cairo
+
+      - name: Install Cairo library (Windows)
+        if: matrix.platform == 'windows-latest'
+        shell: pwsh
+        run: |
+          # Use MSYS2 to install Cairo (MSYS2 is pre-installed on GitHub Actions Windows runners)
+          C:\msys64\usr\bin\bash.exe -lc "pacman -S --noconfirm mingw-w64-x86_64-cairo"
+
+          # Get Python location
+          $pythonLocation = python -c "import sys; print(sys.prefix)"
+          Write-Host "Python location: $pythonLocation"
+
+          # Create DLLs directory if it doesn't exist
+          $dllsDir = Join-Path $pythonLocation "DLLs"
+          if (-not (Test-Path $dllsDir)) {
+            New-Item -Path $dllsDir -ItemType Directory -Force
+            Write-Host "Created DLLs directory: $dllsDir"
+          }
+
+          # Copy Cairo DLL to Python directory so PyInstaller can find it
+          $cairoDll = "C:\msys64\mingw64\bin\libcairo-2.dll"
+          if (Test-Path $cairoDll) {
+            Copy-Item $cairoDll (Join-Path $dllsDir "libcairo-2.dll") -Force
+            Write-Host "Cairo DLL installed successfully from MSYS2"
+
+            # Also copy all dependent DLLs that Cairo needs
+            $dependencies = @(
+              # Image and graphics
+              "libpng16-16.dll",
+              "libpixman-1-0.dll",
+              # Font libraries
+              "libfreetype-6.dll",
+              "libfontconfig-1.dll",
+              "libharfbuzz-0.dll",
+              "libgraphite2.dll",
+              # Compression
+              "zlib1.dll",
+              "libbz2-1.dll",
+              "libbrotlidec.dll",
+              "libbrotlicommon.dll",
+              # XML and text
+              "libexpat-1.dll",
+              # Character encoding
+              "libiconv-2.dll",
+              "libintl-8.dll",
+              # GLib and deps
+              "libglib-2.0-0.dll",
+              "libpcre2-8-0.dll",
+              "libffi-8.dll",
+              # Runtime libraries
+              "libgcc_s_seh-1.dll",
+              "libstdc++-6.dll",
+              "libwinpthread-1.dll"
+            )
+
+            foreach ($dll in $dependencies) {
+              $sourcePath = "C:\msys64\mingw64\bin\$dll"
+              if (Test-Path $sourcePath) {
+                Copy-Item $sourcePath (Join-Path $dllsDir $dll) -Force -ErrorAction SilentlyContinue
+              }
+            }
+
+            Write-Host "Cairo and dependencies installed to: $dllsDir"
+          } else {
+            Write-Error "Failed to install Cairo from MSYS2"
+            exit 1
+          }
+
+      - name: Build backend binary
+        shell: bash
+        run: |
+          python -m PyInstaller \
+            --onefile \
+            --name fm_skin_builder \
+            --hidden-import=PIL._tkinter_finder \
+            --collect-all UnityPy \
+            --collect-all cairosvg \
+            --collect-all svg.path \
+            --additional-hooks-dir=hooks \
+            --runtime-hook=hooks/rthook_cairocffi.py \
+            fm_skin_builder/__main__.py
+
+          # Create resources directory
+          mkdir -p frontend/src-tauri/resources/backend
+
+          # Copy binary with correct extension
+          if [ "${{ matrix.platform }}" = "windows-latest" ]; then
+            cp dist/fm_skin_builder.exe frontend/src-tauri/resources/backend/
+          else
+            cp dist/fm_skin_builder frontend/src-tauri/resources/backend/
+            chmod +x frontend/src-tauri/resources/backend/fm_skin_builder
+          fi
+
+      - name: Upload backend artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-${{ matrix.name }}
+          path: frontend/src-tauri/resources/backend/
+          retention-days: 1
+
+  # Build Tauri applications
+  build:
+    name: Build ${{ matrix.settings.name }}
+    needs: build-backend
+    strategy:
+      fail-fast: true  # Stop all if one fails (cost control)
+      matrix:
+        settings:
+          - platform: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            name: Linux x86_64
+            backend: Linux
+
+          - platform: windows-latest
+            target: x86_64-pc-windows-msvc
+            name: Windows x86_64
+            backend: Windows
+
+          - platform: macos-latest
+            target: aarch64-apple-darwin
+            name: macOS ARM64
+            backend: macOS
+
+          - platform: macos-15-intel
+            target: x86_64-apple-darwin
+            name: macOS Intel
+            backend: macOS
+
+    runs-on: ${{ matrix.settings.platform }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.settings.target }}
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: './frontend/src-tauri -> target'
+
+      - name: Install Linux dependencies
+        if: matrix.settings.platform == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf
+
+      - name: Download backend
+        uses: actions/download-artifact@v4
+        with:
+          name: backend-${{ matrix.settings.backend }}
+          path: frontend/src-tauri/resources/backend
+
+      - name: Make backend executable (Unix)
+        if: matrix.settings.platform != 'windows-latest'
+        run: chmod +x frontend/src-tauri/resources/backend/fm_skin_builder
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Setup Windows code signing
+        if: matrix.settings.platform == 'windows-latest' && github.event_name != 'pull_request'
+        shell: pwsh
+        run: |
+          if ("${{ secrets.WINDOWS_CERTIFICATE }}" -ne "") {
+            $CertBytes = [Convert]::FromBase64String("${{ secrets.WINDOWS_CERTIFICATE }}")
+            $CertPath = Join-Path $env:RUNNER_TEMP "cert.pfx"
+            [IO.File]::WriteAllBytes($CertPath, $CertBytes)
+            $Password = ConvertTo-SecureString "${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}" -AsPlainText -Force
+            Import-PfxCertificate -FilePath $CertPath -CertStoreLocation Cert:\CurrentUser\My -Password $Password
+            Write-Host "Certificate imported successfully"
+          } else {
+            Write-Host "No signing certificate configured"
+          }
+
+      - name: Build Tauri app
+        working-directory: frontend
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: npm run tauri build -- --target ${{ matrix.settings.target }}
+
+      - name: Prepare artifacts
+        shell: bash
+        run: |
+          mkdir -p artifacts
+
+          if [ "${{ matrix.settings.platform }}" = "ubuntu-latest" ]; then
+            # User installers
+            find frontend/src-tauri/target/${{ matrix.settings.target }}/release/bundle -name "*.AppImage" -exec cp {} artifacts/ \; || true
+            find frontend/src-tauri/target/${{ matrix.settings.target }}/release/bundle -name "*.deb" -exec cp {} artifacts/ \; || true
+            # Updater files (if they exist)
+            find frontend/src-tauri/target/${{ matrix.settings.target }}/release/bundle -name "*.AppImage.tar.gz" -exec cp {} artifacts/ \; || true
+            find frontend/src-tauri/target/${{ matrix.settings.target }}/release/bundle -name "*.AppImage.tar.gz.sig" -exec cp {} artifacts/ \; || true
+          elif [ "${{ matrix.settings.platform }}" = "windows-latest" ]; then
+            # User installers
+            find frontend/src-tauri/target/${{ matrix.settings.target }}/release/bundle -name "*.exe" -exec cp {} artifacts/ \; || true
+            find frontend/src-tauri/target/${{ matrix.settings.target }}/release/bundle -name "*.msi" -exec cp {} artifacts/ \; || true
+            # Updater files (if they exist)
+            find frontend/src-tauri/target/${{ matrix.settings.target }}/release/bundle -name "*.msi.zip" -exec cp {} artifacts/ \; || true
+            find frontend/src-tauri/target/${{ matrix.settings.target }}/release/bundle -name "*.msi.zip.sig" -exec cp {} artifacts/ \; || true
+          elif [[ "${{ matrix.settings.platform }}" == macos-* ]]; then
+            # User installers
+            find frontend/src-tauri/target/${{ matrix.settings.target }}/release/bundle -name "*.dmg" -exec cp {} artifacts/ \; || true
+            # Updater files (if they exist)
+            find frontend/src-tauri/target/${{ matrix.settings.target }}/release/bundle -name "*.app.tar.gz" -exec cp {} artifacts/ \; || true
+            find frontend/src-tauri/target/${{ matrix.settings.target }}/release/bundle -name "*.app.tar.gz.sig" -exec cp {} artifacts/ \; || true
+          fi
+
+          echo "Artifacts prepared:"
+          ls -lah artifacts/ || echo "No artifacts found"
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: fm-skin-builder-${{ matrix.settings.target }}
+          path: artifacts/*
+          if-no-files-found: warn
+          retention-days: 30
+
+  # Publish to R2 (only on tags, after all builds succeed)
+  publish:
+    name: Publish to R2
+    needs: [test, build]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install dependencies
+        run: |
+          pip install boto3
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Extract version from tag
+        id: version
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/v}
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Version: $VERSION"
+
+      - name: Upload to R2
+        env:
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_RELEASES_BUCKET: ${{ vars.R2_RELEASES_BUCKET }}
+        run: |
+          python3 scripts/upload_release_to_r2.py \
+            --artifacts-dir artifacts \
+            --version "${{ steps.version.outputs.version }}" \
+            --bucket "$R2_RELEASES_BUCKET"
+
+      - name: Update latest.json metadata
+        env:
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_RELEASES_BUCKET: ${{ vars.R2_RELEASES_BUCKET }}
+        run: |
+          python3 scripts/update_latest_metadata.py \
+            --artifacts-dir artifacts \
+            --version "${{ steps.version.outputs.version }}" \
+            --bucket "$R2_RELEASES_BUCKET"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          draft: false
+          prerelease: ${{ contains(steps.version.outputs.version, '-') }}
+          generate_release_notes: true
+          files: artifacts/**/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # Beta builds - upload to beta path in R2 and create GitHub Release
+  publish-beta:
+    name: Publish Beta
+    needs: [test, build]
+    if: github.ref == 'refs/heads/beta'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Need full history for version calculation
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install dependencies
+        run: |
+          pip install boto3
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Generate beta version
+        id: version
+        run: |
+          # Automatically determine next version based on conventional commits
+          BETA_VERSION=$(python3 scripts/get_next_version.py --beta)
+          echo "version=$BETA_VERSION" >> $GITHUB_OUTPUT
+          echo "Beta Version: $BETA_VERSION"
+          echo ""
+          echo "Version calculation:"
+          echo "  Latest tag: $(git describe --tags --abbrev=0 2>/dev/null || echo 'none')"
+          echo "  Next version: $BETA_VERSION"
+
+      - name: Upload to R2 (beta path)
+        env:
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_RELEASES_BUCKET: ${{ vars.R2_RELEASES_BUCKET }}
+        run: |
+          python3 scripts/upload_release_to_r2.py \
+            --artifacts-dir artifacts \
+            --version "${{ steps.version.outputs.version }}" \
+            --bucket "$R2_RELEASES_BUCKET" \
+            --beta
+
+      - name: Update latest.json metadata (beta)
+        env:
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_RELEASES_BUCKET: ${{ vars.R2_RELEASES_BUCKET }}
+        run: |
+          python3 scripts/update_latest_metadata.py \
+            --artifacts-dir artifacts \
+            --version "${{ steps.version.outputs.version }}" \
+            --bucket "$R2_RELEASES_BUCKET" \
+            --beta
+
+      - name: Create GitHub Release (Beta)
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ steps.version.outputs.version }}
+          name: Beta ${{ steps.version.outputs.version }}
+          body: |
+            ## Beta Release ${{ steps.version.outputs.version }}
+
+            This is an automated beta build for testing.
+
+            **⚠️ Not for production use**
+
+            Download and test this beta build before it's promoted to a stable release.
+
+            ### What's Changed
+            See commit history since last release for details.
+
+            ---
+            *Built from commit ${{ github.sha }}*
+          draft: false
+          prerelease: true
+          files: artifacts/**/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
