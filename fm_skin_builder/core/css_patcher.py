@@ -919,37 +919,121 @@ class CssPatcher:
                             ):
                                 continue
                         if key in selector_overrides:
-                            hex_val = selector_overrides[key]
+                            value_str = selector_overrides[key]
                             log.info(
-                                f"  [DEBUG] Selector/property match: {key} in {name}, patching to {hex_val}"
+                                f"  [DEBUG] Selector/property match: {key} in {name}, patching to {value_str}"
                             )
-                            values = list(getattr(prop, "m_Values", []))
-                            r, g, b, a = hex_to_rgba(hex_val)
-                            found_type4 = False
-                            for val in values:
-                                if getattr(val, "m_ValueType", None) == 4:
-                                    found_type4 = True
-                                    value_index = getattr(val, "valueIndex", None)
-                                    if (
-                                        value_index is not None
-                                        and 0 <= value_index < len(colors)
-                                    ):
-                                        col = colors[value_index]
-                                        if (col.r, col.g, col.b, col.a) != (r, g, b, a):
-                                            col.r, col.g, col.b, col.a = r, g, b, a
-                                            patched_vars += 1
-                                            log.info(
-                                                f"  [PATCHED - selector/property] {name}: {key} (color index {value_index}) → {hex_val}"
-                                            )
-                                            changed = True
-                                        else:
-                                            log.info(
-                                                f"  [PATCHED - selector/property] {name}: {key} (color index {value_index}) already set to {hex_val}"
-                                            )
+
+                            # Check if it's a color property
+                            if _is_color_property(prop_name, value_str):
+                                # Handle color property (existing logic)
+                                values = list(getattr(prop, "m_Values", []))
+                                r, g, b, a = hex_to_rgba(value_str)
+                                found_type4 = False
+                                for val in values:
+                                    if getattr(val, "m_ValueType", None) == 4:
+                                        found_type4 = True
+                                        value_index = getattr(val, "valueIndex", None)
+                                        if (
+                                            value_index is not None
+                                            and 0 <= value_index < len(colors)
+                                        ):
+                                            col = colors[value_index]
+                                            if (col.r, col.g, col.b, col.a) != (r, g, b, a):
+                                                col.r, col.g, col.b, col.a = r, g, b, a
+                                                patched_vars += 1
+                                                log.info(
+                                                    f"  [PATCHED - selector/property] {name}: {key} (color index {value_index}) → {value_str}"
+                                                )
+                                                changed = True
+                                            else:
+                                                log.info(
+                                                    f"  [PATCHED - selector/property] {name}: {key} (color index {value_index}) already set to {value_str}"
+                                                )
+                                            try:
+                                                touches = getattr(
+                                                    self, "_selector_touches", None
+                                                )
+                                                if touches is not None:
+                                                    norm_sel = key[0]
+                                                    touches.setdefault(
+                                                        (
+                                                            norm_sel
+                                                            if norm_sel.startswith(".")
+                                                            else norm_sel,
+                                                            prop_name,
+                                                        ),
+                                                        set(),
+                                                    ).add(name)
+                                            except Exception:
+                                                pass
+                                if not found_type4:
+                                    replacement_handle = next(
+                                        (
+                                            val
+                                            for val in values
+                                            if getattr(val, "m_ValueType", None)
+                                            in {3, 8, 10}
+                                        ),
+                                        None,
+                                    )
+                                    if replacement_handle is None:
+                                        log.warning(
+                                            f"  [WARN] No suitable value found to convert for {key} in {name}."
+                                        )
+                                        continue
+                                    new_color = _build_unity_color(colors, r, g, b, a)
+                                    colors.append(new_color)
+                                    new_index = len(colors) - 1
+                                    setattr(replacement_handle, "m_ValueType", 4)
+                                    setattr(replacement_handle, "valueIndex", new_index)
+                                    patched_vars += 1
+                                    direct_property_patched_indices.add(new_index)
+                                    changed = True
+                                    log.info(
+                                        f"  [PATCHED - selector/property literal] {name}: {key} (new color index {new_index}) → {value_str}"
+                                    )
+                                    try:
+                                        touches = getattr(self, "_selector_touches", None)
+                                        if touches is not None:
+                                            norm_sel = key[0]
+                                            touches.setdefault(
+                                                (
+                                                    norm_sel
+                                                    if norm_sel.startswith(".")
+                                                    else norm_sel,
+                                                    prop_name,
+                                                ),
+                                                set(),
+                                            ).add(name)
+                                    except Exception:
+                                        log.exception(
+                                            "Exception occurred while updating selector touches for %s",
+                                            key,
+                                        )
+                            else:
+                                # Try to patch as non-color property (float, keyword, resource)
+                                prop_type = PROPERTY_TYPE_MAP.get(prop_name)
+                                if prop_type:
+                                    prop_changed = False
+                                    if 2 in prop_type.unity_types:  # Float
+                                        prop_changed, _ = _patch_float_property(
+                                            data, prop, prop_name, value_str, name
+                                        )
+                                    elif 7 in prop_type.unity_types:  # Resource
+                                        prop_changed, _ = _patch_resource_property(
+                                            data, prop, prop_name, value_str, name
+                                        )
+                                    elif 1 in prop_type.unity_types or 8 in prop_type.unity_types:  # Keyword
+                                        prop_changed, _ = _patch_keyword_property(
+                                            data, prop, prop_name, value_str, name
+                                        )
+
+                                    if prop_changed:
+                                        patched_vars += 1
+                                        changed = True
                                         try:
-                                            touches = getattr(
-                                                self, "_selector_touches", None
-                                            )
+                                            touches = getattr(self, "_selector_touches", None)
                                             if touches is not None:
                                                 norm_sel = key[0]
                                                 touches.setdefault(
@@ -963,50 +1047,6 @@ class CssPatcher:
                                                 ).add(name)
                                         except Exception:
                                             pass
-                            if not found_type4:
-                                replacement_handle = next(
-                                    (
-                                        val
-                                        for val in values
-                                        if getattr(val, "m_ValueType", None)
-                                        in {3, 8, 10}
-                                    ),
-                                    None,
-                                )
-                                if replacement_handle is None:
-                                    log.warning(
-                                        f"  [WARN] No suitable value found to convert for {key} in {name}."
-                                    )
-                                    continue
-                                new_color = _build_unity_color(colors, r, g, b, a)
-                                colors.append(new_color)
-                                new_index = len(colors) - 1
-                                setattr(replacement_handle, "m_ValueType", 4)
-                                setattr(replacement_handle, "valueIndex", new_index)
-                                patched_vars += 1
-                                direct_property_patched_indices.add(new_index)
-                                changed = True
-                                log.info(
-                                    f"  [PATCHED - selector/property literal] {name}: {key} (new color index {new_index}) → {hex_val}"
-                                )
-                                try:
-                                    touches = getattr(self, "_selector_touches", None)
-                                    if touches is not None:
-                                        norm_sel = key[0]
-                                        touches.setdefault(
-                                            (
-                                                norm_sel
-                                                if norm_sel.startswith(".")
-                                                else norm_sel,
-                                                prop_name,
-                                            ),
-                                            set(),
-                                        ).add(name)
-                                except Exception:
-                                    log.exception(
-                                        "Exception occurred while updating selector touches for %s",
-                                        key,
-                                    )
 
         if self.debug_export_dir and changed and not self.dry_run:
             # Ensure dir exists before exporting
