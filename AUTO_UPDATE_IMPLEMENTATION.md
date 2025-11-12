@@ -138,7 +138,16 @@ When an update is available:
 **Rust (`Cargo.toml`):**
 ```toml
 tauri-plugin-updater = "2.0"
+
+# Platform-specific file dialog dependencies
+[target.'cfg(target_os = "linux")'.dependencies]
+rfd = { version = "0.15", default-features = false, features = ["xdg-portal"] }
+
+[target.'cfg(not(target_os = "linux"))'.dependencies]
+rfd = "0.15"
 ```
+
+**Note:** The `rfd` crate is configured differently for Linux to use `xdg-portal` instead of `gtk3`, avoiding feature conflicts in CI/CD environments.
 
 **Frontend (`package.json`):**
 ```json
