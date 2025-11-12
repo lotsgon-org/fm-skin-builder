@@ -29,6 +29,18 @@ from .css_utils import (
     clean_for_json,
     hex_to_rgba,
     serialize_stylesheet_to_uss,
+    normalize_css_color,
+)
+from .value_parsers import (
+    parse_css_value,
+    parse_float_value,
+    parse_keyword_value,
+    parse_resource_value,
+    CssValueType,
+)
+from .property_handlers import (
+    get_property_handler,
+    PROPERTY_TYPE_MAP,
 )
 from .texture_utils import (
     collect_replacement_stems,
@@ -74,6 +86,187 @@ def _build_unity_color(
     color = SimpleNamespace()
     color.r, color.g, color.b, color.a = r, g, b, a
     return color
+
+
+def _is_color_property(prop_name: str, value: Any) -> bool:
+    """Check if a property should be treated as a color."""
+    # Check if it's a color value (hex string)
+    if isinstance(value, str):
+        return normalize_css_color(value) is not None
+    return False
+
+
+def _patch_float_property(
+    data: Any,
+    prop: Any,
+    prop_name: str,
+    value_str: str,
+    name: str,
+) -> Tuple[bool, Optional[int]]:
+    """
+    Patch a float property value.
+
+    Returns (changed, patched_index) tuple.
+    """
+    parsed = parse_float_value(value_str)
+    if parsed is None:
+        return False, None
+
+    float_value = parsed.unity_value
+    floats = getattr(data, "floats", [])
+    if not hasattr(data, "floats"):
+        setattr(data, "floats", floats)
+
+    values = list(getattr(prop, "m_Values", []))
+
+    # Try to find existing Type 2 (float) value
+    for val in values:
+        if getattr(val, "m_ValueType", None) == 2:
+            value_index = getattr(val, "valueIndex", None)
+            if value_index is not None and 0 <= value_index < len(floats):
+                old_value = floats[value_index]
+                if abs(old_value - float_value) < 1e-6:  # No change
+                    return False, value_index
+                floats[value_index] = float_value
+                log.info(
+                    f"  [PATCHED - float] {name}: {prop_name} (index {value_index}): {old_value} → {float_value}"
+                )
+                return True, value_index
+
+    # No existing float value, create new one
+    floats.append(float_value)
+    new_index = len(floats) - 1
+
+    # Update or create value handle
+    handle = next(
+        (val for val in values if getattr(val, "m_ValueType", None) in {2, 3, 8, 10}),
+        values[0] if values else None,
+    )
+    if handle:
+        setattr(handle, "m_ValueType", 2)
+        setattr(handle, "valueIndex", new_index)
+        log.info(
+            f"  [PATCHED - float] {name}: {prop_name} (new index {new_index}) → {float_value}"
+        )
+        return True, new_index
+
+    return False, None
+
+
+def _patch_keyword_property(
+    data: Any,
+    prop: Any,
+    prop_name: str,
+    value_str: str,
+    name: str,
+) -> Tuple[bool, Optional[int]]:
+    """
+    Patch a keyword/enum property value.
+
+    Returns (changed, patched_index) tuple.
+    """
+    parsed = parse_keyword_value(value_str)
+    if parsed is None:
+        return False, None
+
+    keyword = parsed.keyword
+    strings = getattr(data, "strings", [])
+    if not hasattr(data, "strings"):
+        setattr(data, "strings", strings)
+
+    values = list(getattr(prop, "m_Values", []))
+
+    # Try to find existing Type 1 or 8 (keyword/enum) value
+    for val in values:
+        value_type = getattr(val, "m_ValueType", None)
+        if value_type in {1, 8}:
+            value_index = getattr(val, "valueIndex", None)
+            if value_index is not None and 0 <= value_index < len(strings):
+                old_value = strings[value_index]
+                if old_value == keyword:  # No change
+                    return False, value_index
+                strings[value_index] = keyword
+                log.info(
+                    f"  [PATCHED - keyword] {name}: {prop_name} (index {value_index}): {old_value} → {keyword}"
+                )
+                return True, value_index
+
+    # No existing keyword value, create new one
+    strings.append(keyword)
+    new_index = len(strings) - 1
+
+    # Update or create value handle
+    handle = next(
+        (val for val in values if getattr(val, "m_ValueType", None) in {1, 3, 8, 10}),
+        values[0] if values else None,
+    )
+    if handle:
+        # Use Type 8 (enum) by default for keywords
+        setattr(handle, "m_ValueType", 8)
+        setattr(handle, "valueIndex", new_index)
+        log.info(
+            f"  [PATCHED - keyword] {name}: {prop_name} (new index {new_index}) → {keyword}"
+        )
+        return True, new_index
+
+    return False, None
+
+
+def _patch_resource_property(
+    data: Any,
+    prop: Any,
+    prop_name: str,
+    value_str: str,
+    name: str,
+) -> Tuple[bool, Optional[int]]:
+    """
+    Patch a resource reference property value.
+
+    Returns (changed, patched_index) tuple.
+    """
+    parsed = parse_resource_value(value_str)
+    if parsed is None:
+        return False, None
+
+    resource_path = parsed.unity_path
+    strings = getattr(data, "strings", [])
+    if not hasattr(data, "strings"):
+        setattr(data, "strings", strings)
+
+    values = list(getattr(prop, "m_Values", []))
+
+    # Try to find existing Type 7 (resource) value
+    for val in values:
+        if getattr(val, "m_ValueType", None) == 7:
+            value_index = getattr(val, "valueIndex", None)
+            if value_index is not None and 0 <= value_index < len(strings):
+                old_value = strings[value_index]
+                if old_value == resource_path:  # No change
+                    return False, value_index
+                strings[value_index] = resource_path
+                log.info(
+                    f"  [PATCHED - resource] {name}: {prop_name} (index {value_index}): {old_value} → {resource_path}"
+                )
+                return True, value_index
+
+    # No existing resource value, create new one
+    strings.append(resource_path)
+    new_index = len(strings) - 1
+
+    # Update or create value handle
+    handle = next(
+        (val for val in values if getattr(val, "m_ValueType", None) in {3, 7, 8, 10}),
+        values[0] if values else None,
+    )
+    if handle:
+        setattr(handle, "m_ValueType", 7)
+        setattr(handle, "valueIndex", new_index)
+        log.info(
+            f"  [PATCHED - resource] {name}: {prop_name} (new index {new_index}) → {resource_path}"
+        )
+        return True, new_index
+
+    return False, None
 
 
 class CssPatcher:
@@ -519,22 +712,56 @@ class CssPatcher:
                     ]
                     match_key = next((k for k in candidates if k in css_vars), None)
                 if match_key:
-                    for val in getattr(prop, "m_Values", []):
-                        if getattr(val, "m_ValueType", None) == 4:
-                            value_index = getattr(val, "valueIndex", None)
-                            if value_index is not None and 0 <= value_index < len(
-                                colors
-                            ):
-                                hex_val = css_vars[match_key]
-                                r, g, b, a = hex_to_rgba(hex_val)
-                                col = colors[value_index]
-                                if (col.r, col.g, col.b, col.a) != (r, g, b, a):
-                                    col.r, col.g, col.b, col.a = r, g, b, a
+                    value_str = css_vars[match_key]
+
+                    # Check if it's a color property (backwards compatibility)
+                    if _is_color_property(prop_name, value_str):
+                        for val in getattr(prop, "m_Values", []):
+                            if getattr(val, "m_ValueType", None) == 4:
+                                value_index = getattr(val, "valueIndex", None)
+                                if value_index is not None and 0 <= value_index < len(
+                                    colors
+                                ):
+                                    hex_val = value_str
+                                    r, g, b, a = hex_to_rgba(hex_val)
+                                    col = colors[value_index]
+                                    if (col.r, col.g, col.b, col.a) != (r, g, b, a):
+                                        col.r, col.g, col.b, col.a = r, g, b, a
+                                        patched_vars += 1
+                                        direct_property_patched_indices.add(value_index)
+                                        log.info(
+                                            f"  [PATCHED - direct property] {name}: {match_key} (color index {value_index}) → {hex_val}"
+                                        )
+                                        changed = True
+                    else:
+                        # Try to patch as non-color property (float, keyword, resource)
+                        prop_type = PROPERTY_TYPE_MAP.get(prop_name)
+                        if prop_type:
+                            # Determine which type to use based on property definition
+                            patched = False
+                            if 2 in prop_type.unity_types:  # Float
+                                prop_changed, index = _patch_float_property(
+                                    data, prop, prop_name, value_str, name
+                                )
+                                if prop_changed:
+                                    patched = True
                                     patched_vars += 1
-                                    direct_property_patched_indices.add(value_index)
-                                    log.info(
-                                        f"  [PATCHED - direct property] {name}: {match_key} (color index {value_index}) → {hex_val}"
-                                    )
+                                    changed = True
+                            elif 7 in prop_type.unity_types:  # Resource
+                                prop_changed, index = _patch_resource_property(
+                                    data, prop, prop_name, value_str, name
+                                )
+                                if prop_changed:
+                                    patched = True
+                                    patched_vars += 1
+                                    changed = True
+                            elif 1 in prop_type.unity_types or 8 in prop_type.unity_types:  # Keyword
+                                prop_changed, index = _patch_keyword_property(
+                                    data, prop, prop_name, value_str, name
+                                )
+                                if prop_changed:
+                                    patched = True
+                                    patched_vars += 1
                                     changed = True
 
         # If a root-level variable only references other tokens (e.g. var(--foo)) and the user
