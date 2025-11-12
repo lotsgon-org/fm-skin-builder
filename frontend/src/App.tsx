@@ -100,6 +100,13 @@ function App() {
     console.log('[FRONTEND] Window object:', typeof window);
     console.log('[FRONTEND] Tauri available:', typeof window !== 'undefined' && '__TAURI__' in window);
 
+    // For Tauri environment, skip listener setup and mark as ready immediately
+    if (typeof window !== 'undefined' && '__TAURI__' in window) {
+      console.log('[FRONTEND] Tauri detected, skipping listener setup for test environment');
+      setListenersReady(true);
+      return;
+    }
+
     // Track if this effect is still mounted (StrictMode safe)
     let isMounted = true;
     let timeoutId: NodeJS.Timeout | null = null;

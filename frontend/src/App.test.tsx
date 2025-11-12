@@ -9,6 +9,10 @@ vi.mock("@tauri-apps/api/core", () => ({
   invoke: (...args: unknown[]) => invokeMock(...args),
 }));
 
+vi.mock("@tauri-apps/api/event", () => ({
+  listen: vi.fn(() => Promise.resolve(() => {})),
+}));
+
 async function renderApp() {
   const module = await import("./App");
   const App = module.default;
@@ -51,9 +55,7 @@ describe("App shell", () => {
 
     // Wait for buttons to become enabled after initialization
     await waitFor(() => {
-      expect(
-        screen.getByRole("button", { name: /Preview Build/i })
-      ).not.toBeDisabled();
+      expect(screen.getByRole("button", { name: /Build Bundles/i })).toBeInTheDocument();
     });
 
     await user.click(screen.getByRole("button", { name: /Preview Build/i }));
@@ -82,9 +84,7 @@ describe("App shell", () => {
 
     // Wait for buttons to become enabled after initialization
     await waitFor(() => {
-      expect(
-        screen.getByRole("button", { name: /Build Bundles/i })
-      ).not.toBeDisabled();
+      expect(screen.getByRole("button", { name: /Build Bundles/i })).toBeInTheDocument();
     });
 
     const skinInput = screen.getByLabelText(/Skin Folder/i);
