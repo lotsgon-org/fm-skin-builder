@@ -16,7 +16,7 @@ tokio = { version = "1", features = ["process", "io-util", "rt", "sync", "time"]
 # Platform-specific rfd and dialog plugin configuration to avoid gtk3/xdg-portal conflict
 [target.'cfg(target_os = "linux")'.dependencies]
 tauri-plugin-dialog = { version = "2.0", default-features = false }
-rfd = { version = "0.15", default-features = false, features = ["xdg-portal", "async-std"] }
+rfd = { version = "0.15", default-features = false, features = ["gtk3", "async-std"] }
 
 [target.'cfg(not(target_os = "linux"))'.dependencies]
 tauri-plugin-dialog = "2.0"
