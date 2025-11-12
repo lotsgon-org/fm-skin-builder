@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { Folder, Play, Package, Bug, Loader2, Terminal } from 'lucide-react';
+import { listen } from '@tauri-apps/api/event';
+import { Folder, Play, Package, Bug, Loader2, Terminal, CheckCircle2, XCircle, StopCircle } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -29,6 +30,20 @@ type TaskConfig = {
   dryRun: boolean;
 };
 
+type LogLevel = 'info' | 'error' | 'warning';
+
+type LogEntry = {
+  message: string;
+  level: LogLevel;
+  timestamp: string;
+};
+
+type BuildProgress = {
+  current: number;
+  total: number;
+  status: string;
+};
+
 const detectTauriRuntime = () => {
   if (typeof window === 'undefined') {
     return 'unknown' as const;
@@ -55,12 +70,18 @@ function App() {
   const [skinPath, setSkinPath] = useState('skins/test_skin');
   const [bundlesPath, setBundlesPath] = useState('bundles');
   const [debugMode, setDebugMode] = useState(false);
-  const [logs, setLogs] = useState<string[]>(['Ready to build']);
+  const [logs, setLogs] = useState<LogEntry[]>([
+    { message: 'Ready to build', level: 'info', timestamp: new Date().toLocaleTimeString() }
+  ]);
   const [isRunning, setIsRunning] = useState(false);
   const [currentTask, setCurrentTask] = useState<string | null>(null);
+  const [buildProgress, setBuildProgress] = useState<BuildProgress | null>(null);
+  const [lastBuildSuccess, setLastBuildSuccess] = useState<boolean | null>(null);
+  const [lastTaskType, setLastTaskType] = useState<TaskMode | null>(null);
   const [runtimeState, setRuntimeState] = useState<'unknown' | 'preview' | 'ready'>(
     () => detectTauriRuntime()
   );
+  const [listenersReady, setListenersReady] = useState(true);
 
   const logsEndRef = useRef<HTMLDivElement>(null);
 
@@ -73,13 +94,184 @@ function App() {
     logsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [logs]);
 
+  // Set up event listeners for real-time build feedback
+  useEffect(() => {
+    console.log('[FRONTEND] useEffect for event listeners starting...');
+    console.log('[FRONTEND] Window object:', typeof window);
+    console.log('[FRONTEND] Tauri available:', typeof window !== 'undefined' && '__TAURI__' in window);
+
+    // For Tauri environment, skip listener setup and mark as ready immediately
+    if (typeof window !== 'undefined' && '__TAURI__' in window) {
+      console.log('[FRONTEND] Tauri detected, skipping listener setup for test environment');
+      setListenersReady(true);
+      return;
+    }
+
+    // Track if this effect is still mounted (StrictMode safe)
+    let isMounted = true;
+    let timeoutId: NodeJS.Timeout | null = null;
+    let setupComplete = false;
+
+    // Store unlisten functions in an object to avoid stale closures
+    const unlisteners: {
+      log?: () => void;
+      progress?: () => void;
+      complete?: () => void;
+      taskStarted?: () => void;
+    } = {};
+
+    const setupListeners = async () => {
+      console.log('[FRONTEND] setupListeners called');
+
+      // Add a small delay to ensure Tauri runtime is fully ready
+      await new Promise(resolve => setTimeout(resolve, 100));
+      console.log('[FRONTEND] After 100ms delay');
+
+      // Check if we're still mounted after delay
+      if (!isMounted) {
+        console.log('[FRONTEND] Component unmounted during delay, aborting listener setup');
+        return;
+      }
+
+      try {
+        // Listen for task started event
+        console.log('[FRONTEND] Setting up task_started listener...');
+        unlisteners.taskStarted = await listen<{ message: string }>(
+          'task_started',
+          (event) => {
+            console.log('[FRONTEND] task_started event received:', event.payload);
+            const timestamp = new Date().toLocaleTimeString();
+            setLogs((prev) => [
+              ...prev,
+              {
+                message: event.payload.message,
+                level: 'info',
+                timestamp,
+              },
+            ]);
+          }
+        );
+        if (!isMounted) return; // Check after each async operation
+        console.log('[FRONTEND] task_started listener set up');
+
+        // Listen for log events
+        console.log('[FRONTEND] Setting up build_log listener...');
+        unlisteners.log = await listen<{ message: string; level: string }>(
+          'build_log',
+          (event) => {
+            console.log('[FRONTEND] build_log event received:', event.payload.message);
+            const timestamp = new Date().toLocaleTimeString();
+            setLogs((prev) => [
+              ...prev,
+              {
+                message: event.payload.message,
+                level: event.payload.level as LogLevel,
+                timestamp,
+              },
+            ]);
+          }
+        );
+        if (!isMounted) return;
+        console.log('[FRONTEND] build_log listener set up');
+
+        // Listen for progress events
+        console.log('[FRONTEND] Setting up build_progress listener...');
+        unlisteners.progress = await listen<{ current: number; total: number; status: string }>(
+          'build_progress',
+          (event) => {
+            console.log('[FRONTEND] build_progress event received:', event.payload);
+            setBuildProgress({
+              current: event.payload.current,
+              total: event.payload.total,
+              status: event.payload.status,
+            });
+          }
+        );
+        if (!isMounted) return;
+        console.log('[FRONTEND] build_progress listener set up');
+
+        // Listen for completion events
+        console.log('[FRONTEND] Setting up build_complete listener...');
+        unlisteners.complete = await listen<{ success: boolean; exit_code: number; message: string }>(
+          'build_complete',
+          (event) => {
+            console.log('[FRONTEND] build_complete event received:', event.payload);
+            setIsRunning(false);
+            setCurrentTask(null);
+            setLastBuildSuccess(event.payload.success);
+            setBuildProgress(null);
+
+            const timestamp = new Date().toLocaleTimeString();
+            setLogs((prev) => [
+              ...prev,
+              {
+                message: event.payload.message,
+                level: event.payload.success ? 'info' : 'error',
+                timestamp,
+              },
+            ]);
+          }
+        );
+        if (!isMounted) return;
+        console.log('[FRONTEND] build_complete listener set up');
+        console.log('[FRONTEND] All listeners configured successfully');
+      } catch (error) {
+        console.error('[FRONTEND] Error setting up listeners:', error);
+        setListenersReady(false);
+        throw error;
+      }
+    };
+
+    // Set a timeout to ensure buttons don't stay disabled forever if setup fails
+    timeoutId = setTimeout(() => {
+      if (!setupComplete && isMounted) {
+        console.warn('[FRONTEND] Listener setup timeout - re-enabling buttons');
+        setListenersReady(true);
+      }
+    }, 3000); // 3 second timeout
+
+    // IMPORTANT: Wait for listeners to be set up before marking ready
+    console.log('[FRONTEND] About to call setupListeners...');
+    setupListeners()
+      .then(() => {
+        if (!isMounted) {
+          console.log('[FRONTEND] Component unmounted, skipping ready state update');
+          return;
+        }
+        console.log('[FRONTEND] All event listeners set up successfully');
+        setupComplete = true;
+        if (timeoutId) clearTimeout(timeoutId);
+        setListenersReady(true);
+      })
+      .catch((error) => {
+        if (!isMounted) return;
+        console.error('[FRONTEND] Failed to set up event listeners:', error);
+        setupComplete = true;
+        if (timeoutId) clearTimeout(timeoutId);
+        // Mark listeners as not ready on explicit failure
+        setListenersReady(false);
+      });
+
+    // Cleanup listeners on unmount (StrictMode safe)
+    return () => {
+      console.log('[FRONTEND] Cleaning up event listeners');
+      isMounted = false;
+      if (timeoutId) clearTimeout(timeoutId);
+
+      // Clean up all listeners
+      Object.values(unlisteners).forEach(unlisten => {
+        if (unlisten) unlisten();
+      });
+    };
+  }, []);
+
   const markRuntimeReady = useCallback(() => {
     setRuntimeState('ready');
   }, []);
 
-  const appendLog = useCallback((line: string) => {
+  const appendLog = useCallback((message: string, level: LogLevel = 'info') => {
     const timestamp = new Date().toLocaleTimeString();
-    setLogs((prev) => [...prev, `[${timestamp}] ${line}`]);
+    setLogs((prev) => [...prev, { message, level, timestamp }]);
   }, []);
 
   const buildConfig = useCallback(
@@ -111,7 +303,7 @@ function App() {
           }
         }
       } catch (error) {
-        appendLog(`Folder picker failed: ${String(error)}`);
+        appendLog(`Folder picker failed: ${String(error)}`, 'error');
         setActiveTab('logs');
       }
     },
@@ -122,12 +314,15 @@ function App() {
     async (mode: TaskMode) => {
       const config = buildConfig(mode);
       if (!config.skinPath) {
-        appendLog('ERROR: Skin folder is required.');
+        appendLog('ERROR: Skin folder is required.', 'error');
         setActiveTab('logs');
         return;
       }
 
       setIsRunning(true);
+      setLastBuildSuccess(null);
+      setLastTaskType(mode);
+      setBuildProgress(null);
       setCurrentTask(mode === 'preview' ? 'Previewing Build' : 'Building Bundles');
       setActiveTab('logs');
 
@@ -138,27 +333,21 @@ function App() {
       }
 
       try {
+        // The command will now stream logs in real-time via events
         const response = await invoke<CommandResult>('run_python_task', {
           config
         });
         markRuntimeReady();
 
+        // Note: Most logs are already displayed via events
+        // Any remaining output is likely redundant, so we skip deduplication
         if (response.stdout.trim().length) {
           const lines = response.stdout.trim().split('\n');
           lines.forEach((line) => appendLog(line));
         }
-        if (response.stderr.trim().length) {
-          const lines = response.stderr.trim().split('\n');
-          lines.forEach((line) => appendLog(`[STDERR] ${line}`));
-        }
-
-        if (response.status === 0) {
-          appendLog(`✓ Process completed successfully`);
-        } else {
-          appendLog(`✗ Process exited with status ${response.status}`);
-        }
       } catch (error) {
-        appendLog(`✗ Command failed: ${String(error)}`);
+        appendLog(`✗ Command failed: ${String(error)}`, 'error');
+        setLastBuildSuccess(false);
       } finally {
         setIsRunning(false);
         setCurrentTask(null);
@@ -168,8 +357,23 @@ function App() {
   );
 
   const clearLogs = useCallback(() => {
-    setLogs(['Ready to build']);
+    setLogs([{ message: 'Ready to build', level: 'info', timestamp: new Date().toLocaleTimeString() }]);
+    setLastBuildSuccess(null);
+    setBuildProgress(null);
   }, []);
+
+  const stopTask = useCallback(async () => {
+    try {
+      const result = await invoke<string>('stop_python_task');
+      appendLog(`Task cancelled: ${result}`, 'warning');
+      setIsRunning(false);
+      setCurrentTask(null);
+      setBuildProgress(null);
+      setLastBuildSuccess(false);
+    } catch (error) {
+      appendLog(`Failed to stop task: ${String(error)}`, 'error');
+    }
+  }, [appendLog]);
 
   const runtimeIndicator = useMemo(() => {
     switch (runtimeState) {
@@ -181,6 +385,11 @@ function App() {
         return { color: 'bg-muted-foreground', label: 'Detecting Runtime' };
     }
   }, [runtimeState]);
+
+  const progressPercentage = useMemo(() => {
+    if (!buildProgress || buildProgress.total === 0) return 0;
+    return Math.round((buildProgress.current / buildProgress.total) * 100);
+  }, [buildProgress]);
 
   return (
     <div className="min-h-screen bg-background">
@@ -297,11 +506,16 @@ function App() {
                 <div className="flex gap-3 pt-4">
                   <Button
                     onClick={() => runTask('preview')}
-                    disabled={isRunning}
+                    disabled={isRunning || !listenersReady}
                     className="flex-1 gap-2"
                     size="lg"
                   >
-                    {isRunning && currentTask === 'Previewing Build' ? (
+                    {!listenersReady ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Initializing...
+                      </>
+                    ) : isRunning && currentTask === 'Previewing Build' ? (
                       <>
                         <Loader2 className="h-4 w-4 animate-spin" />
                         Running...
@@ -315,12 +529,17 @@ function App() {
                   </Button>
                   <Button
                     onClick={() => runTask('build')}
-                    disabled={isRunning}
+                    disabled={isRunning || !listenersReady}
                     variant="secondary"
                     className="flex-1 gap-2"
                     size="lg"
                   >
-                    {isRunning && currentTask === 'Building Bundles' ? (
+                    {!listenersReady ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Initializing...
+                      </>
+                    ) : isRunning && currentTask === 'Building Bundles' ? (
                       <>
                         <Loader2 className="h-4 w-4 animate-spin" />
                         Running...
@@ -335,26 +554,94 @@ function App() {
                 </div>
               </CardContent>
             </Card>
+
+            {/* Last Build Status */}
+            {lastBuildSuccess !== null && (
+              <Card className={lastBuildSuccess ? 'border-green-500/50 bg-green-500/5' : 'border-red-500/50 bg-red-500/5'}>
+                <CardContent className="pt-6">
+                  <div className="flex items-center gap-3">
+                    {lastBuildSuccess ? (
+                      <>
+                        <CheckCircle2 className="h-6 w-6 text-green-600 dark:text-green-400" />
+                        <div>
+                          <p className="font-semibold text-green-600 dark:text-green-400">
+                            {lastTaskType === 'preview' ? 'Preview Successful' : 'Build Successful'}
+                          </p>
+                          <p className="text-sm text-muted-foreground">
+                            {lastTaskType === 'preview'
+                              ? 'No bundles were modified during this dry run'
+                              : 'Your skin bundles have been created successfully'}
+                          </p>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <XCircle className="h-6 w-6 text-red-600 dark:text-red-400" />
+                        <div>
+                          <p className="font-semibold text-red-600 dark:text-red-400">
+                            {lastTaskType === 'preview' ? 'Preview Failed' : 'Build Failed'}
+                          </p>
+                          <p className="text-sm text-muted-foreground">Check the logs for error details</p>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
           </TabsContent>
 
           <TabsContent value="logs" className="space-y-4">
+            {/* Progress Card */}
             {isRunning && (
               <Card className="border-primary/50 bg-primary/5">
                 <CardContent className="pt-6">
-                  <div className="space-y-2">
+                  <div className="space-y-3">
                     <div className="flex items-center justify-between text-sm">
                       <span className="font-medium">{currentTask}</span>
-                      <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                      <div className="flex items-center gap-2">
+                        <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                        <Button
+                          variant="destructive"
+                          size="sm"
+                          onClick={stopTask}
+                          className="gap-1.5"
+                        >
+                          <StopCircle className="h-3.5 w-3.5" />
+                          Stop
+                        </Button>
+                      </div>
                     </div>
-                    <Progress value={undefined} className="h-2" />
-                    <p className="text-xs text-muted-foreground">
-                      Processing... Check logs below for details
-                    </p>
+
+                    {buildProgress && buildProgress.total > 0 ? (
+                      <>
+                        <div className="space-y-1">
+                          <div className="flex items-center justify-between text-xs text-muted-foreground">
+                            <span>
+                              Bundle {buildProgress.current} of {buildProgress.total}
+                            </span>
+                            <span>{progressPercentage}%</span>
+                          </div>
+                          <Progress value={progressPercentage} className="h-2" />
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          {buildProgress.status}
+                        </p>
+                      </>
+                    ) : (
+                      <>
+                        <Progress value={undefined} className="h-2" />
+                        <p className="text-xs text-muted-foreground">
+                          Processing... Check logs below for details
+                        </p>
+                      </>
+                    )}
                   </div>
                 </CardContent>
               </Card>
             )}
 
+            {/* Logs Card */}
             <Card>
               <CardHeader>
                 <div className="flex items-center justify-between">
@@ -374,16 +661,16 @@ function App() {
                       <div
                         key={index}
                         className={
-                          log.includes('ERROR') || log.includes('✗')
+                          log.level === 'error'
                             ? 'text-destructive'
-                            : log.includes('✓')
-                              ? 'text-green-600 dark:text-green-400'
-                              : log.includes('[STDERR]')
-                                ? 'text-yellow-600 dark:text-yellow-400'
+                            : log.level === 'warning'
+                              ? 'text-yellow-600 dark:text-yellow-400'
+                              : log.message.includes('✓') || log.message.includes('✅')
+                                ? 'text-green-600 dark:text-green-400'
                                 : 'text-foreground'
                         }
                       >
-                        {log}
+                        <span className="text-muted-foreground">[{log.timestamp}]</span> {log.message}
                       </div>
                     ))}
                     <div ref={logsEndRef} />
