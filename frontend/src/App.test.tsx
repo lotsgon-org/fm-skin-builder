@@ -53,12 +53,26 @@ describe("App shell", () => {
       screen.getByText(/(Frontend Preview|Detecting Runtime)/i)
     ).toBeInTheDocument();
 
+    // Set valid paths
+    const skinInput = screen.getByLabelText(/Skin Folder/i);
+    await user.clear(skinInput);
+    await user.type(skinInput, "/tmp/test_skin");
+
+    const bundlesInput = screen.getByLabelText(/Bundles Directory/i);
+    await user.clear(bundlesInput);
+    await user.type(bundlesInput, "/tmp/bundles");
+
     // Wait for buttons to become enabled after initialization
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: /Build Bundles/i })).toBeInTheDocument();
+      const previewButton = screen.getByRole("button", { name: /Preview Build/i });
+      expect(previewButton).toBeInTheDocument();
+      expect(previewButton).not.toBeDisabled();
     });
 
     await user.click(screen.getByRole("button", { name: /Preview Build/i }));
+
+    // Check if invoke was called
+    expect(invokeMock).toHaveBeenCalled();
 
     await waitFor(() => {
       expect(
@@ -84,7 +98,9 @@ describe("App shell", () => {
 
     // Wait for buttons to become enabled after initialization
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: /Build Bundles/i })).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: /Build Bundles/i })
+      ).toBeInTheDocument();
     });
 
     const skinInput = screen.getByLabelText(/Skin Folder/i);
