@@ -1063,7 +1063,12 @@ class SkinPatchPipeline:
         font_service: Optional[FontSwapService] = None
         if font_targets_present:
             font_service = FontSwapService(
-                FontSwapOptions(includes=includes_list, dry_run=self.options.dry_run)
+                FontSwapOptions(
+                    includes=includes_list,
+                    dry_run=self.options.dry_run,
+                    auto_convert=False,  # Permissive: Unity often handles format mismatches
+                    strict_format=False,  # Don't block mismatches, just warn
+                )
             )
 
         summary_lines: List[str] = []

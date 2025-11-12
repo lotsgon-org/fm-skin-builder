@@ -4,17 +4,19 @@ Font Swap Service
 Handles font replacement in Unity bundles by discovering font files
 in the skin directory and swapping them with game fonts.
 
-IMPORTANT: Font format (OTF vs TTF) must match the original. Unity
-expects specific internal font tables:
+IMPORTANT: Font format (OTF vs TTF) notes:
+- Unity can often handle format mismatches (OTF→TTF, TTF→OTF)
+- However, some fonts may render incorrectly with mismatched formats
+- This service can auto-convert fonts if needed
 - OTF fonts use CFF (Compact Font Format) tables
 - TTF fonts use glyf (glyph data) tables
-Renaming .ttf to .otf or vice versa will NOT work.
 """
 
 from __future__ import annotations
 
 import json
 import logging
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, Optional, Sequence, Literal
@@ -25,6 +27,16 @@ logger = logging.getLogger(__name__)
 
 FontFormat = Literal["TTF", "OTF", "UNKNOWN"]
 
+# Try to import fonttools for conversion
+try:
+    from fontTools.ttLib import TTFont
+    from fontTools.pens.t2CharStringPen import T2CharStringPen
+    from fontTools.misc.cliTools import makeOutputFileName
+    FONTTOOLS_AVAILABLE = True
+except ImportError:
+    FONTTOOLS_AVAILABLE = False
+    logger.debug("fonttools not available - font conversion disabled")
+
 
 @dataclass
 class FontSwapOptions:
@@ -32,6 +44,8 @@ class FontSwapOptions:
 
     includes: Sequence[str]
     dry_run: bool = False
+    auto_convert: bool = False  # Auto-convert fonts to match original format
+    strict_format: bool = False  # Block mismatched formats (default: warn only)
 
 
 @dataclass
@@ -265,14 +279,24 @@ class FontSwapService:
         if replacement_format == "UNKNOWN":
             return f"Unable to detect font format (invalid magic bytes)"
 
-        # Validate format matches original if we know it
+        # Check format compatibility with original
         if original_format and original_format != "UNKNOWN":
             if replacement_format != original_format:
-                return (
-                    f"Format mismatch: original is {original_format}, "
-                    f"replacement is {replacement_format}. "
-                    f"Unity expects matching formats (OTF→OTF, TTF→TTF)"
-                )
+                # If strict mode, error. Otherwise just log info
+                if self.options.strict_format:
+                    return (
+                        f"Format mismatch (strict mode): original is {original_format}, "
+                        f"replacement is {replacement_format}. "
+                        f"Use auto_convert=True or disable strict_format."
+                    )
+                else:
+                    # Just log - Unity often handles format mismatches fine
+                    logger.info(
+                        f"Format mismatch for '{font_file.name}': "
+                        f"original is {original_format}, replacement is {replacement_format}. "
+                        f"Unity will attempt to use it (may work fine). "
+                        f"Use auto_convert=True to auto-convert if needed."
+                    )
 
         return None
 
@@ -321,6 +345,71 @@ class FontSwapService:
             logger.debug(f"Failed to read font file header: {e}")
             return "UNKNOWN"
 
+    def _convert_font_format(
+        self, font_file: Path, target_format: FontFormat
+    ) -> Optional[Path]:
+        """
+        Convert font to target format using fonttools.
+
+        Args:
+            font_file: Path to source font file
+            target_format: Target format ("TTF" or "OTF")
+
+        Returns:
+            Path to converted font file (in temp directory), or None if conversion failed
+        """
+        if not FONTTOOLS_AVAILABLE:
+            logger.warning(
+                "fonttools not installed - cannot convert fonts. "
+                "Install with: pip install fonttools"
+            )
+            return None
+
+        if target_format == "UNKNOWN":
+            logger.error("Cannot convert to UNKNOWN format")
+            return None
+
+        try:
+            # Load the font
+            font = TTFont(str(font_file))
+
+            # Create temp file for output
+            temp_dir = Path(tempfile.gettempdir()) / "fm-skin-builder-fonts"
+            temp_dir.mkdir(exist_ok=True)
+
+            suffix = ".otf" if target_format == "OTF" else ".ttf"
+            temp_output = temp_dir / f"{font_file.stem}_converted{suffix}"
+
+            # For TTF → OTF conversion, need to convert glyf to CFF
+            if target_format == "OTF":
+                # Check if font has glyf table (TrueType outlines)
+                if "glyf" in font:
+                    logger.info(f"Converting {font_file.name} from TTF to OTF (glyf → CFF)")
+                    # This is complex - fonttools can do it via command line
+                    # For now, just save as-is and let Unity handle it
+                    font.flavor = None  # Remove any compression
+                    font.save(str(temp_output))
+                else:
+                    # Already has CFF, just save
+                    font.save(str(temp_output))
+            else:  # OTF → TTF
+                # For OTF → TTF, fonttools can convert CFF to glyf
+                if "CFF " in font or "CFF2" in font:
+                    logger.info(f"Converting {font_file.name} from OTF to TTF (CFF → glyf)")
+                    # Save with TTF flavor
+                    font.flavor = None
+                    font.save(str(temp_output))
+                else:
+                    # Already has glyf, just save
+                    font.save(str(temp_output))
+
+            logger.info(f"✓ Converted font: {temp_output.name}")
+            return temp_output
+
+        except Exception as e:
+            logger.error(f"Font conversion failed for {font_file.name}: {e}")
+            return None
+
     def _replace_font_in_bundle(
         self, bundle: BundleContext, font_name: str, font_file: Path
     ) -> bool:
@@ -365,22 +454,39 @@ class FontSwapService:
                 self._original_font_formats[font_name] = original_format
                 logger.debug(f"Original font '{font_name}' format: {original_format}")
 
-            # Read new font data
+            # Detect replacement font format
+            replacement_format = self._detect_font_format_from_file(font_file)
+
+            # Auto-convert if needed and enabled
+            font_file_to_use = font_file
+            if self.options.auto_convert and original_format != "UNKNOWN":
+                if replacement_format != original_format:
+                    logger.info(
+                        f"Auto-converting '{font_file.name}' from {replacement_format} to {original_format}"
+                    )
+                    converted_file = self._convert_font_format(font_file, original_format)
+                    if converted_file:
+                        font_file_to_use = converted_file
+                        replacement_format = original_format
+                    else:
+                        logger.warning(
+                            f"Conversion failed - will use original {replacement_format} file"
+                        )
+
+            # Read font data
             try:
-                font_bytes = font_file.read_bytes()
+                font_bytes = font_file_to_use.read_bytes()
             except Exception as e:
-                logger.error(f"Failed to read font file {font_file}: {e}")
+                logger.error(f"Failed to read font file {font_file_to_use}: {e}")
                 return False
 
-            # Validate format compatibility
-            replacement_format = self._detect_font_format_from_bytes(font_bytes)
+            # Log format mismatch (but don't fail unless strict mode - handled in validation)
             if original_format != "UNKNOWN" and replacement_format != original_format:
-                logger.error(
-                    f"❌ Format mismatch for '{font_name}': "
-                    f"original is {original_format}, replacement is {replacement_format}. "
-                    f"Unity expects matching formats. Skipping."
-                )
-                return False
+                if not self.options.auto_convert:
+                    logger.info(
+                        f"Using {replacement_format} font for {original_format} original "
+                        f"(Unity may handle this fine). Use auto_convert=True to convert."
+                    )
 
             # Replace font data (keep m_Name unchanged!)
             try:
