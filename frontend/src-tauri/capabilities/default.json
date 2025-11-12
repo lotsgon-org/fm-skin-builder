@@ -41,6 +41,15 @@
     "core:path:allow-dirname",
     "core:path:allow-extname",
     "core:path:allow-basename",
-    "core:path:allow-is-absolute"
+    "core:path:allow-is-absolute",
+    "store:default",
+    "store:allow-load",
+    "dialog:allow-ask",
+    "dialog:default",
+    "updater:allow-check",
+    "updater:default",
+    "updater:allow-download-and-install",
+    "updater:allow-install",
+    "updater:allow-download"
   ]
 }

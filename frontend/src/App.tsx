@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { getVersion } from '@tauri-apps/api/app';
-import { Folder, Play, Package, Bug, Loader2, Terminal, CheckCircle2, XCircle, StopCircle } from 'lucide-react';
+import { Folder, Play, Package, Bug, Loader2, Terminal, CheckCircle2, XCircle, StopCircle, Zap, AlertCircle, Settings as SettingsIcon } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -15,6 +15,9 @@ import { Progress } from '@/components/ui/progress';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { Logo } from '@/components/logo';
+import { Settings } from '@/components/Settings';
+import { useStore } from '@/hooks/useStore';
+import { useUpdater } from '@/hooks/useUpdater';
 
 type CommandResult = {
   stdout: string;
@@ -67,10 +70,17 @@ const detectTauriRuntime = () => {
 };
 
 function App() {
-  const [activeTab, setActiveTab] = useState<'build' | 'logs'>('build');
-  const [skinPath, setSkinPath] = useState('skins/test_skin');
-  const [bundlesPath, setBundlesPath] = useState('bundles');
+  const [activeTab, setActiveTab] = useState<'build' | 'logs' | 'settings'>('build');
+  const [skinPath, setSkinPath] = useState('');
+  const [bundlesPath, setBundlesPath] = useState('');
   const [debugMode, setDebugMode] = useState(false);
+  const { settings, saveSetting, clearSetting } = useStore();
+  const { isChecking: isCheckingUpdates, checkForUpdates } = useUpdater({
+    autoUpdate: settings.checkForUpdates ?? true,
+    betaUpdates: settings.betaUpdates ?? false,
+  });
+  const [pathErrors, setPathErrors] = useState<{ skin?: string; bundles?: string }>({});
+  const [pathWarnings, setPathWarnings] = useState<{ skin?: string; bundles?: string }>({});
   const [logs, setLogs] = useState<LogEntry[]>([
     { message: 'Ready to build', level: 'info', timestamp: new Date().toLocaleTimeString() }
   ]);
@@ -95,6 +105,30 @@ function App() {
       .then(version => setAppVersion(version))
       .catch(() => setAppVersion('dev'));
   }, []);
+
+  // Load saved paths from store on mount
+  useEffect(() => {
+    if (settings.skinPath) {
+      setSkinPath(settings.skinPath);
+    }
+    if (settings.bundlesPath) {
+      setBundlesPath(settings.bundlesPath);
+    }
+  }, [settings.skinPath, settings.bundlesPath]);
+
+  // Save skin path when it changes
+  useEffect(() => {
+    if (skinPath && skinPath !== settings.skinPath) {
+      saveSetting('skinPath', skinPath).catch(console.error);
+    }
+  }, [skinPath, settings.skinPath, saveSetting]);
+
+  // Save bundles path when it changes
+  useEffect(() => {
+    if (bundlesPath && bundlesPath !== settings.bundlesPath) {
+      saveSetting('bundlesPath', bundlesPath).catch(console.error);
+    }
+  }, [bundlesPath, settings.bundlesPath, saveSetting]);
 
   useEffect(() => {
     // Auto-scroll logs to bottom
@@ -304,9 +338,13 @@ function App() {
           if (target === 'skin') {
             setSkinPath(selected);
             appendLog(`Selected skin folder: ${selected}`);
+            setPathErrors(prev => ({ ...prev, skin: undefined }));
+            setPathWarnings(prev => ({ ...prev, skin: undefined }));
           } else {
             setBundlesPath(selected);
             appendLog(`Selected bundles folder: ${selected}`);
+            setPathErrors(prev => ({ ...prev, bundles: undefined }));
+            setPathWarnings(prev => ({ ...prev, bundles: undefined }));
           }
         }
       } catch (error) {
@@ -317,14 +355,68 @@ function App() {
     [appendLog, bundlesPath, markRuntimeReady, skinPath]
   );
 
+  const validatePaths = useCallback((): boolean => {
+    const errors: { skin?: string; bundles?: string } = {};
+
+    if (!skinPath || skinPath.trim() === '') {
+      errors.skin = 'Required - Use Auto-detect or browse for folder';
+    }
+
+    if (!bundlesPath || bundlesPath.trim() === '') {
+      errors.bundles = 'Required - Use Auto-detect or browse for folder';
+    }
+
+    setPathErrors(errors);
+
+    if (errors.skin || errors.bundles) {
+      if (errors.skin) appendLog('ERROR: Skin folder is required. Use Auto-detect or browse for folder.', 'error');
+      if (errors.bundles) appendLog('ERROR: Bundles directory is required. Use Auto-detect or browse for folder.', 'error');
+      // Don't switch tabs - keep user on current screen to see validation errors
+      return false;
+    }
+
+    return true;
+  }, [skinPath, bundlesPath, appendLog]);
+
+  const handleAutoDetectGame = useCallback(async () => {
+    try {
+      // detect_game_installation now returns the bundles directory directly
+      const bundlesPath = await invoke<string | null>('detect_game_installation');
+      if (bundlesPath) {
+        setBundlesPath(bundlesPath);
+        appendLog(`✓ Found bundles directory: ${bundlesPath}`, 'info');
+        setPathErrors(prev => ({ ...prev, bundles: undefined }));
+        setPathWarnings(prev => ({ ...prev, bundles: undefined }));
+      } else {
+        appendLog('⚠ Could not detect game installation', 'warning');
+        appendLog('Checked Steam, Epic Games, and Xbox Game Pass locations - use Browse to select manually', 'info');
+        setPathWarnings(prev => ({ ...prev, bundles: 'Could not detect game installation - use Browse to select manually' }));
+      }
+    } catch (error) {
+      appendLog(`Error detecting game: ${String(error)}`, 'error');
+      setPathErrors(prev => ({ ...prev, bundles: `Error: ${String(error)}` }));
+    }
+  }, [appendLog]);
+
+  const handleGetDefaultSkinsDir = useCallback(async () => {
+    try {
+      const defaultDir = await invoke<string>('get_default_skins_dir');
+      appendLog(`Default skins directory: ${defaultDir}`, 'info');
+      setSkinPath(defaultDir);
+      setPathErrors(prev => ({ ...prev, skin: undefined }));
+    } catch (error) {
+      appendLog(`Error getting default skins directory: ${String(error)}`, 'error');
+    }
+  }, [appendLog]);
+
   const runTask = useCallback(
     async (mode: TaskMode) => {
-      const config = buildConfig(mode);
-      if (!config.skinPath) {
-        appendLog('ERROR: Skin folder is required.', 'error');
-        setActiveTab('logs');
+      // Validate paths before running
+      if (!validatePaths()) {
         return;
       }
+
+      const config = buildConfig(mode);
 
       setIsRunning(true);
       setLastBuildSuccess(null);
@@ -360,7 +452,7 @@ function App() {
         setCurrentTask(null);
       }
     },
-    [appendLog, buildConfig, markRuntimeReady]
+    [appendLog, buildConfig, markRuntimeReady, validatePaths]
   );
 
   const clearLogs = useCallback(() => {
@@ -420,8 +512,8 @@ function App() {
       </header>
 
       <main className="container mx-auto max-w-6xl px-6 py-8 pb-16">
-        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'build' | 'logs')}>
-          <TabsList className="grid w-full max-w-md grid-cols-2">
+        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'build' | 'logs' | 'settings')}>
+          <TabsList className="grid w-full max-w-2xl grid-cols-3">
             <TabsTrigger value="build" className="gap-2">
               <Package className="h-4 w-4" />
               Build
@@ -430,6 +522,10 @@ function App() {
               <Terminal className="h-4 w-4" />
               Logs
               {isRunning && <Loader2 className="h-3 w-3 animate-spin" />}
+            </TabsTrigger>
+            <TabsTrigger value="settings" className="gap-2">
+              <SettingsIcon className="h-4 w-4" />
+              Settings
             </TabsTrigger>
           </TabsList>
 
@@ -448,10 +544,27 @@ function App() {
                     <Input
                       id="skin-folder"
                       value={skinPath}
-                      onChange={(e) => setSkinPath(e.target.value)}
-                      placeholder="skins/test_skin"
-                      className="flex-1"
+                      onChange={(e) => {
+                        setSkinPath(e.target.value);
+                        if (pathErrors.skin && e.target.value.trim()) {
+                          setPathErrors(prev => ({ ...prev, skin: undefined }));
+                        }
+                        if (pathWarnings.skin && e.target.value.trim()) {
+                          setPathWarnings(prev => ({ ...prev, skin: undefined }));
+                        }
+                      }}
+                      placeholder="Select your skin folder..."
+                      className={`flex-1 ${pathErrors.skin ? 'border-red-500' : ''}`}
                     />
+                    <Button
+                      variant="outline"
+                      onClick={handleGetDefaultSkinsDir}
+                      className="gap-2"
+                      title="Auto-detect default skins directory"
+                    >
+                      <Zap className="h-4 w-4" />
+                      <span className="hidden sm:inline">Auto-detect</span>
+                    </Button>
                     <Button
                       variant="outline"
                       size="icon"
@@ -461,9 +574,16 @@ function App() {
                       <Folder className="h-4 w-4" />
                     </Button>
                   </div>
-                  <p className="text-xs text-muted-foreground">
-                    Must contain a valid <code className="rounded bg-muted px-1 py-0.5">config.json</code>
-                  </p>
+                  {pathErrors.skin ? (
+                    <p className="flex items-center gap-1 text-xs text-red-600 dark:text-red-400">
+                      <AlertCircle className="h-3 w-3" />
+                      {pathErrors.skin}
+                    </p>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">
+                      Must contain a valid <code className="rounded bg-muted px-1 py-0.5">config.json</code>
+                    </p>
+                  )}
                 </div>
 
                 <div className="space-y-2">
@@ -472,10 +592,27 @@ function App() {
                     <Input
                       id="bundles-folder"
                       value={bundlesPath}
-                      onChange={(e) => setBundlesPath(e.target.value)}
-                      placeholder="bundles"
-                      className="flex-1"
+                      onChange={(e) => {
+                        setBundlesPath(e.target.value);
+                        if (pathErrors.bundles && e.target.value.trim()) {
+                          setPathErrors(prev => ({ ...prev, bundles: undefined }));
+                        }
+                        if (pathWarnings.bundles && e.target.value.trim()) {
+                          setPathWarnings(prev => ({ ...prev, bundles: undefined }));
+                        }
+                      }}
+                      placeholder="Select bundles directory..."
+                      className={`flex-1 ${pathErrors.bundles ? 'border-red-500' : ''}`}
                     />
+                    <Button
+                      variant="outline"
+                      onClick={handleAutoDetectGame}
+                      className="gap-2"
+                      title="Auto-detect game installation (Steam, Epic, Xbox Game Pass)"
+                    >
+                      <Zap className="h-4 w-4" />
+                      <span className="hidden sm:inline">Auto-detect</span>
+                    </Button>
                     <Button
                       variant="outline"
                       size="icon"
@@ -485,9 +622,21 @@ function App() {
                       <Folder className="h-4 w-4" />
                     </Button>
                   </div>
-                  <p className="text-xs text-muted-foreground">
-                    Output directory for generated bundles
-                  </p>
+                  {pathErrors.bundles ? (
+                    <p className="flex items-center gap-1 text-xs text-red-600 dark:text-red-400">
+                      <AlertCircle className="h-3 w-3" />
+                      {pathErrors.bundles}
+                    </p>
+                  ) : pathWarnings.bundles ? (
+                    <p className="flex items-center gap-1 text-xs text-amber-600 dark:text-amber-400">
+                      <AlertCircle className="h-3 w-3" />
+                      {pathWarnings.bundles}
+                    </p>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">
+                      Game bundles directory (supports Steam, Epic Games, Xbox Game Pass)
+                    </p>
+                  )}
                 </div>
 
                 <div className="flex items-center justify-between rounded-lg border p-4">
@@ -685,6 +834,33 @@ function App() {
                 </ScrollArea>
               </CardContent>
             </Card>
+          </TabsContent>
+
+          <TabsContent value="settings">
+            <Settings
+              skinPath={skinPath}
+              bundlesPath={bundlesPath}
+              betaUpdates={settings.betaUpdates ?? false}
+              autoUpdate={settings.checkForUpdates ?? true}
+              isCheckingUpdates={isCheckingUpdates}
+              onClearSkinPath={() => {
+                setSkinPath('');
+                clearSetting('skinPath').catch(console.error);
+              }}
+              onClearBundlesPath={() => {
+                setBundlesPath('');
+                clearSetting('bundlesPath').catch(console.error);
+              }}
+              onBetaUpdatesChange={(enabled) => {
+                saveSetting('betaUpdates', enabled).catch(console.error);
+              }}
+              onAutoUpdateChange={(enabled) => {
+                saveSetting('checkForUpdates', enabled).catch(console.error);
+              }}
+              onCheckForUpdates={() => {
+                checkForUpdates(true);
+              }}
+            />
           </TabsContent>
         </Tabs>
       </main>

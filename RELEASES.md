@@ -7,12 +7,14 @@ This document describes the release process for FM Skin Builder, including versi
 FM Skin Builder supports two release channels:
 
 ### Stable Releases
+
 - Tagged with version numbers (e.g., `v0.2.0`)
 - Thoroughly tested and ready for production use
 - Auto-updates enabled by default for all users
 - Published to GitHub Releases and R2 storage
 
 ### Beta Releases
+
 - Auto-generated from `beta` branch commits
 - Versioned as `X.Y.Z-beta.{commit-sha}` (e.g., `0.2.0-beta.79f77d5`)
 - **Opt-in only** - users must explicitly enable beta updates
@@ -22,6 +24,7 @@ FM Skin Builder supports two release channels:
 ## Versioning
 
 Versions follow [Semantic Versioning](https://semver.org/):
+
 - **MAJOR.MINOR.PATCH** (e.g., `0.2.0`)
 - Calculated automatically from conventional commit messages
 
@@ -89,12 +92,14 @@ When enabled, the system will work as follows:
 ### Planned Behavior
 
 #### Stable Channel (Default)
+
 - Users receive updates only from stable releases
 - Updates checked on app startup
 - Update notifications appear in-app
 - Users can choose to install immediately or defer
 
 #### Beta Channel (Opt-in)
+
 - Users must explicitly enable beta updates in settings
 - Receive both beta and stable releases
 - Beta builds marked with "BETA" badge in version number
@@ -105,6 +110,7 @@ When enabled, the system will work as follows:
 The auto-update system requires:
 
 1. **Updater Configuration** (`frontend/src-tauri/tauri.conf.json`):
+
    ```json
    "updater": {
      "active": true,
@@ -116,6 +122,7 @@ The auto-update system requires:
    ```
 
 2. **Signing Keys** (GitHub Secrets):
+
    - `TAURI_SIGNING_PRIVATE_KEY` - Private key for signing updates
    - `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` - Password for private key
 
@@ -128,21 +135,25 @@ The auto-update system requires:
 To enable auto-updates in the future:
 
 1. **Generate signing keys:**
+
    ```bash
    cd frontend
    npm run tauri signer generate
    ```
 
 2. **Set GitHub secrets:**
+
    - Add private key and password to repository secrets
    - Keys are used to sign update artifacts
 
 3. **Update tauri.conf.json:**
+
    - Uncomment updater configuration
    - Add public key from step 1
    - Set endpoint to R2 bucket URL
 
 4. **Configure R2 bucket:**
+
    - Make releases path publicly readable
    - Or keep private and use custom domain with public access
 
@@ -155,11 +166,13 @@ To enable auto-updates in the future:
 Each build generates the following artifacts:
 
 ### User Installers
+
 - **Linux**: `.AppImage`, `.deb`
 - **macOS**: `.dmg` (Intel and ARM64)
 - **Windows**: `.exe` (NSIS), `.msi`
 
 ### Auto-Update Files (when enabled)
+
 - **Linux**: `.AppImage.tar.gz`, `.AppImage.tar.gz.sig`
 - **macOS**: `.app.tar.gz`, `.app.tar.gz.sig`
 - **Windows**: `.msi.zip`, `.msi.zip.sig`
@@ -167,11 +180,13 @@ Each build generates the following artifacts:
 ### Version Display
 
 The app displays its version in the bottom-left corner with a badge indicator:
+
 - Stable: `v0.2.0`
 - Beta: `v0.2.0-123` + `Beta` badge
 - Dev: `vdev` (when running locally)
 
 **Note:** Beta versions use numeric-only pre-release identifiers (`0.2.0-123` instead of `0.2.0-beta.123`) to comply with Windows MSI requirements. The word "beta" contains letters which MSI doesn't allow in pre-release identifiers. Beta status is indicated by:
+
 - A yellow "Beta" badge in the app UI
 - GitHub pre-release tag
 - Upload to `beta/` path in R2
@@ -208,6 +223,7 @@ When a beta is ready for stable release:
 The following GitHub repository variables must be set for R2 uploads:
 
 **Secrets:**
+
 - `R2_ACCOUNT_ID` - Your Cloudflare R2 account ID
 - `R2_ACCESS_KEY` - R2 access key ID
 - `R2_SECRET_ACCESS_KEY` - R2 secret access key
@@ -215,13 +231,14 @@ The following GitHub repository variables must be set for R2 uploads:
 - `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` - Password for private key (when auto-update enabled)
 
 **Variables:**
+
 - `R2_RELEASES_BUCKET` - Name of your R2 bucket (e.g., `fm-skin-builder-releases`)
 
 ### Setting Up R2
 
 1. Create an R2 bucket in Cloudflare
 2. Configure public access for the `/releases` and `/beta` paths (or entire bucket)
-3. Set up a custom domain (e.g., `releases.fm-skin-builder.com`) pointing to your bucket
+3. Set up a custom domain (e.g., `release.fmskinbuilder.com`) pointing to your bucket
 4. Update the hardcoded domain in `scripts/update_latest_metadata.py` if using a different domain
 5. Add credentials to GitHub repository secrets/variables
 6. Ensure bucket allows public reads for the release paths
@@ -263,6 +280,7 @@ releases/
 ### Build Version Stuck at 0.1.0
 
 The version is hardcoded in three files and gets updated by the workflow:
+
 - `frontend/package.json`
 - `frontend/src-tauri/tauri.conf.json`
 - `frontend/src-tauri/Cargo.toml`
@@ -284,22 +302,25 @@ The workflow flattens artifacts before uploading. Both `upload_release_to_r2.py`
 
 **latest.json Structure:**
 The `latest.json` file serves dual purposes:
+
 1. **Tauri Updater**: Uses the `url` and `signature` fields per platform for auto-updates
 2. **Website Downloads**: Uses the `installers` array per platform to show download options
 
 Each platform entry contains:
+
 - `url` + `signature` - Updater archive (.tar.gz or .zip) for Tauri
 - `installers[]` - Array of user installers (.dmg, .exe, .AppImage, .deb) for website
 
 Example structure:
+
 ```json
 {
   "darwin-aarch64": {
-    "url": "https://releases.fm-skin-builder.com/releases/0.2.0/FM_Skin_Builder_0.2.0_aarch64.app.tar.gz",
+    "url": "https://release.fmskinbuilder.com/releases/0.2.0/FM_Skin_Builder_0.2.0_aarch64.app.tar.gz",
     "signature": "dW50cnVzdGVkIGNvbW1lbnQ...",
     "installers": [
       {
-        "url": "https://releases.fm-skin-builder.com/releases/0.2.0/FM Skin Builder_0.2.0_aarch64.dmg",
+        "url": "https://release.fmskinbuilder.com/releases/0.2.0/FM Skin Builder_0.2.0_aarch64.dmg",
         "format": "dmg",
         "size": 50123456
       }

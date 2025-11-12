@@ -68,7 +68,7 @@ def get_artifact_info(
 
     # Base URL for downloads
     base_path = "beta" if is_beta else "releases"
-    base_url = f"https://releases.fm-skin-builder.com/{base_path}/{version}"
+    base_url = f"https://release.fmskinbuilder.com/{base_path}/{version}"
 
     # Find all artifacts
     for root, _, files in os.walk(artifacts_dir):
