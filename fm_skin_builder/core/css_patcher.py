@@ -222,6 +222,14 @@ def _patch_resource_property(
     """
     Patch a resource reference property value.
 
+    Unity USS Type 7 (AssetReference) uses string paths in the strings array,
+    not binary PPtr<Object> references. Unity resolves "resource://..." paths
+    at runtime when building the UI. This means:
+    - We store string paths like "resource://fonts/MyFont"
+    - Unity's resource loader finds and loads the actual Font asset
+    - No FileID/PathID needed for USS stylesheets
+    - This is different from MonoBehaviour serialization which uses PPtr
+
     Returns (changed, patched_index) tuple.
     """
     parsed = parse_resource_value(value_str)
@@ -243,6 +251,7 @@ def _patch_resource_property(
                 old_value = strings[value_index]
                 if old_value == resource_path:  # No change
                     return False, value_index
+                # Update in-place, preserving the array index
                 strings[value_index] = resource_path
                 log.info(
                     f"  [PATCHED - resource] {name}: {prop_name} (index {value_index}): {old_value} → {resource_path}"
@@ -780,36 +789,143 @@ class CssPatcher:
                 match_key = next((k for k in candidates if k in css_vars), None)
                 if not match_key:
                     continue
+
+                value_str = css_vars[match_key]
                 values = list(getattr(prop, "m_Values", []))
-                has_literal_color = any(
-                    getattr(val, "m_ValueType", None) == 4 for val in values
-                )
-                if has_literal_color or not values:
+                if not values:
                     continue
 
-                hex_val = css_vars[match_key]
-                r, g, b, a = hex_to_rgba(hex_val)
-                new_color = _build_unity_color(colors, r, g, b, a)
-                colors.append(new_color)
-                new_index = len(colors) - 1
+                # Check if it's a color property
+                if _is_color_property(prop_name, value_str):
+                    has_literal_color = any(
+                        getattr(val, "m_ValueType", None) == 4 for val in values
+                    )
+                    if has_literal_color:
+                        continue
 
-                handle = next(
-                    (
-                        val
-                        for val in values
-                        if getattr(val, "m_ValueType", None) in {3, 8, 10}
-                    ),
-                    values[0],
-                )
-                setattr(handle, "m_ValueType", 4)
-                setattr(handle, "valueIndex", new_index)
+                    # Convert variable reference to literal color
+                    hex_val = value_str
+                    r, g, b, a = hex_to_rgba(hex_val)
+                    new_color = _build_unity_color(colors, r, g, b, a)
+                    colors.append(new_color)
+                    new_index = len(colors) - 1
 
-                patched_vars += 1
-                direct_property_patched_indices.add(new_index)
-                changed = True
-                log.info(
-                    f"  [PATCHED - var literal] {name}: {match_key} (new color index {new_index}) → {hex_val}"
-                )
+                    handle = next(
+                        (
+                            val
+                            for val in values
+                            if getattr(val, "m_ValueType", None) in {3, 8, 10}
+                        ),
+                        values[0],
+                    )
+                    setattr(handle, "m_ValueType", 4)
+                    setattr(handle, "valueIndex", new_index)
+
+                    patched_vars += 1
+                    direct_property_patched_indices.add(new_index)
+                    changed = True
+                    log.info(
+                        f"  [PATCHED - var literal color] {name}: {match_key} (new color index {new_index}) → {hex_val}"
+                    )
+                else:
+                    # Handle non-color properties (float, keyword, resource)
+                    prop_type = PROPERTY_TYPE_MAP.get(prop_name)
+                    if not prop_type:
+                        continue
+
+                    # Check what type of literal value we need
+                    if 2 in prop_type.unity_types:  # Float
+                        # Check if property already has a literal float (Type 2)
+                        has_literal_float = any(
+                            getattr(val, "m_ValueType", None) == 2 for val in values
+                        )
+                        if has_literal_float:
+                            continue
+
+                        # Convert variable reference to literal float
+                        parsed = parse_float_value(value_str)
+                        if parsed:
+                            floats = getattr(data, "floats", [])
+                            if not hasattr(data, "floats"):
+                                setattr(data, "floats", floats)
+
+                            floats.append(parsed.unity_value)
+                            new_index = len(floats) - 1
+
+                            handle = next(
+                                (val for val in values if getattr(val, "m_ValueType", None) in {2, 3, 8, 10}),
+                                values[0],
+                            )
+                            setattr(handle, "m_ValueType", 2)
+                            setattr(handle, "valueIndex", new_index)
+
+                            patched_vars += 1
+                            changed = True
+                            log.info(
+                                f"  [PATCHED - var literal float] {name}: {match_key} (new float index {new_index}) → {parsed.unity_value}"
+                            )
+
+                    elif 1 in prop_type.unity_types or 8 in prop_type.unity_types:  # Keyword
+                        # Check if property already has a literal keyword (Type 1/8)
+                        has_literal_keyword = any(
+                            getattr(val, "m_ValueType", None) in {1, 8} for val in values
+                        )
+                        if has_literal_keyword:
+                            continue
+
+                        # Convert variable reference to literal keyword
+                        parsed = parse_keyword_value(value_str)
+                        if parsed:
+                            strings = getattr(data, "strings", [])
+                            if not hasattr(data, "strings"):
+                                setattr(data, "strings", strings)
+
+                            strings.append(parsed.keyword)
+                            new_index = len(strings) - 1
+
+                            handle = next(
+                                (val for val in values if getattr(val, "m_ValueType", None) in {1, 3, 8, 10}),
+                                values[0],
+                            )
+                            setattr(handle, "m_ValueType", 8)  # Use Type 8 (enum) for keywords
+                            setattr(handle, "valueIndex", new_index)
+
+                            patched_vars += 1
+                            changed = True
+                            log.info(
+                                f"  [PATCHED - var literal keyword] {name}: {match_key} (new string index {new_index}) → {parsed.keyword}"
+                            )
+
+                    elif 7 in prop_type.unity_types:  # Resource
+                        # Check if property already has a literal resource (Type 7)
+                        has_literal_resource = any(
+                            getattr(val, "m_ValueType", None) == 7 for val in values
+                        )
+                        if has_literal_resource:
+                            continue
+
+                        # Convert variable reference to literal resource path
+                        parsed = parse_resource_value(value_str)
+                        if parsed:
+                            strings = getattr(data, "strings", [])
+                            if not hasattr(data, "strings"):
+                                setattr(data, "strings", strings)
+
+                            strings.append(parsed.unity_path)
+                            new_index = len(strings) - 1
+
+                            handle = next(
+                                (val for val in values if getattr(val, "m_ValueType", None) in {3, 7, 8, 10}),
+                                values[0],
+                            )
+                            setattr(handle, "m_ValueType", 7)
+                            setattr(handle, "valueIndex", new_index)
+
+                            patched_vars += 1
+                            changed = True
+                            log.info(
+                                f"  [PATCHED - var literal resource] {name}: {match_key} (new string index {new_index}) → {parsed.unity_path}"
+                            )
 
         # Strict CSS variable patching
         color_indices_to_patch: Dict[int, str] = {}
