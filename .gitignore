@@ -7,6 +7,7 @@ backups/
 .DS_Store
 .pytest_cache/
 dist/
+*.egg-info/
 bundles/
 extracted_sprites/
 skins/new_skin
