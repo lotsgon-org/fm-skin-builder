@@ -137,17 +137,26 @@ When an update is available:
 
 **Rust (`Cargo.toml`):**
 ```toml
+[package]
+resolver = "2"  # Use Cargo's newer feature resolver for better per-platform feature resolution
+
+[dependencies]
 tauri-plugin-updater = "2.0"
 
-# Platform-specific file dialog dependencies
+# Platform-specific rfd and dialog plugin configuration to avoid gtk3/xdg-portal conflict
 [target.'cfg(target_os = "linux")'.dependencies]
-rfd = { version = "0.15", default-features = false, features = ["xdg-portal"] }
+tauri-plugin-dialog = { version = "2.0", default-features = false }
+rfd = { version = "0.15", default-features = false, features = ["xdg-portal", "async-std"] }
 
 [target.'cfg(not(target_os = "linux"))'.dependencies]
+tauri-plugin-dialog = "2.0"
 rfd = "0.15"
 ```
 
-**Note:** The `rfd` crate is configured differently for Linux to use `xdg-portal` instead of `gtk3`, avoiding feature conflicts in CI/CD environments.
+**Note:** On Linux, both `tauri-plugin-dialog` and `rfd` must be configured with specific features to avoid the `gtk3`/`xdg-portal` conflict. Key points:
+- Disable default features for `tauri-plugin-dialog` to prevent it from enabling `gtk3` on `rfd`
+- Explicitly specify `rfd` with only `xdg-portal` and `async-std` features
+- The `async-std` feature is required for compatibility with `tauri-plugin-dialog`'s async operations
 
 **Frontend (`package.json`):**
 ```json
