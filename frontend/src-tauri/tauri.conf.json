@@ -28,7 +28,7 @@
   "plugins": {
     "updater": {
       "endpoints": ["https://release.fmskinbuilder.com/latest.json"],
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDdBMEJENDM5NkExNzE4MjIKUldRaUdCZHFPZFFMZXBMR0hvcTVWejdXalY0Um9VTnJvaVdxZWxCalFzbXpGVURDN1YzNWcvVVIK",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDRGNDVERkY5MzMwNzFERjYKUldUMkhRY3orZDlGVDUyNTVxMGJySzd4Z1JPMndIKytJVlFkMENwK2hiOGYvWmg0WFFDWnJWOFMK",
       "windows": {
         "installMode": "passive"
       }
