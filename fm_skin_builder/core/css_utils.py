@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
-from typing import Dict, List, Tuple, Optional
+from typing import Dict, List, Tuple, Optional, Any
 
 from .logger import get_logger
 
@@ -11,6 +11,8 @@ log = get_logger(__name__)
 __all__ = [
     "load_css_vars",
     "load_css_selector_overrides",
+    "load_css_properties",
+    "load_css_selector_properties",
     "hex_to_rgba",
     "build_selector_from_parts",
     "serialize_stylesheet_to_uss",
@@ -150,6 +152,70 @@ def load_css_selector_overrides(path: Path) -> Dict[Tuple[str, str], str]:
             selector_overrides[key] = normalised
             selector_overrides[(key[0].lstrip("."), key[1])] = normalised
     return selector_overrides
+
+
+def load_css_properties(path: Path) -> Dict[str, Any]:
+    """
+    Parse a .css/.uss file for all CSS variable declarations (not just colors).
+
+    Returns a dictionary mapping variable names to their values (as strings).
+    Values can be colors, floats, keywords, etc.
+    """
+    text = path.read_text(encoding="utf-8")
+    matches = re.findall(r"--([\w-]+)\s*:\s*([^;]+);", text)
+    properties: Dict[str, Any] = {}
+
+    for name, value in matches:
+        value = value.strip()
+        if not value:
+            continue
+
+        # First try to normalize as color (for backwards compatibility)
+        normalised_color = normalize_css_color(value)
+        if normalised_color:
+            properties[f"--{name}"] = normalised_color
+        else:
+            # Store the raw value for non-color properties
+            # The value will be parsed later based on property context
+            properties[f"--{name}"] = value
+
+    log.info("🎨 Loaded %s CSS properties from %s", len(properties), path)
+    return properties
+
+
+def load_css_selector_properties(path: Path) -> Dict[Tuple[str, str], Any]:
+    """
+    Parse selector/property pairs for all property types (not just colors).
+
+    Returns a dictionary mapping (selector, property) tuples to their values.
+    """
+    text = path.read_text(encoding="utf-8")
+    selector_blocks = re.findall(r"(\.[\w-]+)\s*\{([^}]*)\}", text)
+    selector_props: Dict[Tuple[str, str], Any] = {}
+
+    for selector, block in selector_blocks:
+        props = re.findall(
+            r"([\w-]+)\s*:\s*([^;\n]+?)(?:;|\s*(?=\n|$))",
+            block,
+        )
+        for prop, value in props:
+            value = value.strip()
+            if not value:
+                continue
+
+            # First try to normalize as color (for backwards compatibility)
+            normalised_color = normalize_css_color(value)
+            if normalised_color:
+                value_to_store = normalised_color
+            else:
+                # Store raw value for non-color properties
+                value_to_store = value
+
+            key = (selector.strip(), prop.strip())
+            selector_props[key] = value_to_store
+            selector_props[(key[0].lstrip("."), key[1])] = value_to_store
+
+    return selector_props
 
 
 def hex_to_rgba(hex_str: str) -> Tuple[float, float, float, float]:
