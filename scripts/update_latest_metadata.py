@@ -54,9 +54,7 @@ def calculate_file_hash(file_path: Path) -> str:
     return sha256_hash.hexdigest()
 
 
-def get_artifact_info(
-    artifacts_dir: Path, version: str, is_beta: bool = False
-) -> Dict[str, Any]:
+def get_artifact_info(artifacts_dir: Path, version: str, is_beta: bool = False) -> Dict[str, Any]:
     """
     Extract artifact information from build artifacts.
 
@@ -68,7 +66,7 @@ def get_artifact_info(
 
     # Base URL for downloads
     base_path = "beta" if is_beta else "releases"
-    base_url = f"https://releases.fm-skin-builder.com/{base_path}/{version}"
+    base_url = f"https://release.fmskinbuilder.com/{base_path}/{version}"
 
     # Find all artifacts
     for root, _, files in os.walk(artifacts_dir):
@@ -105,9 +103,7 @@ def get_artifact_info(
                 platform_key = "windows-x86_64"
 
             # Windows installers (.exe, .msi)
-            elif file.endswith(".exe") or (
-                file.endswith(".msi") and not file.endswith(".msi.zip")
-            ):
+            elif file.endswith(".exe") or (file.endswith(".msi") and not file.endswith(".msi.zip")):
                 is_installer = True
                 installer_format = "exe" if file.endswith(".exe") else "msi"
                 platform_key = "windows-x86_64"

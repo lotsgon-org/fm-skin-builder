@@ -466,6 +466,20 @@ async fn run_python_task(
         while let Ok(Some(line)) = stderr_reader.next_line().await {
             lines.push(line.clone());
 
+            // Parse for progress information (Python logs to stderr via logging module)
+            if let Some((current, total, status)) = parse_progress(&line) {
+                if total > 0 {
+                    let _ = window_stderr.emit(
+                        "build_progress",
+                        ProgressEvent {
+                            current,
+                            total,
+                            status,
+                        },
+                    );
+                }
+            }
+
             // Parse stderr for log level instead of assuming error
             // Python's logging module writes to stderr by default, even for INFO
             let level = get_log_level(&line);
@@ -485,39 +499,49 @@ async fn run_python_task(
     });
     eprintln!("[RUST] Stderr reader task spawned");
 
-    // Wait for process to complete
-    // Take the child out of the mutex so we don't hold the lock while waiting
-    // This allows stop_python_task to check if a task is running
+    // Wait for process to complete while keeping it in the mutex
+    // This allows stop_python_task to kill it if needed
     eprintln!("[RUST] About to wait for child process to complete...");
-    let exit_status = {
+    let exit_status = loop {
+        // Poll the child process status
         let child_ref = state.child.clone();
-        eprintln!("[RUST] Acquiring mutex lock to take child...");
         let mut child_guard = child_ref.lock().await;
-        eprintln!("[RUST] Mutex lock acquired");
 
-        let child_opt = child_guard.take();
-        eprintln!("[RUST] Mutex lock released");
-        drop(child_guard);
-
-        if let Some(mut child) = child_opt {
-            eprintln!("[RUST] Child found, calling wait()...");
-            let status = child.wait().await.map_err(|error| {
-                eprintln!("[RUST] ERROR: Failed to wait for process: {}", error);
-                let err_msg = format!("Failed to wait for process: {error}");
-                let _ = window.emit(
-                    "build_log",
-                    LogEvent {
-                        message: err_msg.clone(),
-                        level: "error".to_string(),
-                    },
-                );
-                err_msg
-            })?;
-            eprintln!("[RUST] Child process completed with status: {:?}", status);
-            status
+        if let Some(child) = child_guard.as_mut() {
+            // Try to get the exit status without blocking
+            match child.try_wait() {
+                Ok(Some(status)) => {
+                    eprintln!("[RUST] Child process completed with status: {:?}", status);
+                    // Process completed, remove from mutex and return status
+                    *child_guard = None;
+                    drop(child_guard);
+                    break status;
+                }
+                Ok(None) => {
+                    // Process still running, release lock and wait a bit
+                    drop(child_guard);
+                    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+                }
+                Err(error) => {
+                    eprintln!("[RUST] ERROR: Failed to check process status: {}", error);
+                    let err_msg = format!("Failed to check process status: {error}");
+                    let _ = window.emit(
+                        "build_log",
+                        LogEvent {
+                            message: err_msg.clone(),
+                            level: "error".to_string(),
+                        },
+                    );
+                    *child_guard = None;
+                    drop(child_guard);
+                    return Err(err_msg);
+                }
+            }
         } else {
-            eprintln!("[RUST] ERROR: Child not found in mutex (was cancelled?)");
-            let err_msg = "Child process was cancelled".to_string();
+            // Child was removed (likely cancelled)
+            eprintln!("[RUST] Child not found in mutex (was cancelled)");
+            drop(child_guard);
+            let err_msg = "Task was cancelled".to_string();
             let _ = window.emit(
                 "build_log",
                 LogEvent {
