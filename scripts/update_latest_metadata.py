@@ -103,7 +103,9 @@ def get_artifact_info(artifacts_dir: Path, version: str) -> Dict[str, Any]:
                 platform_key = "windows-x86_64"
 
             # Windows installers (.exe, .msi)
-            elif file.endswith(".exe") or (file.endswith(".msi") and not file.endswith(".msi.zip")):
+            elif file.endswith(".exe") or (
+                file.endswith(".msi") and not file.endswith(".msi.zip")
+            ):
                 is_installer = True
                 installer_format = "exe" if file.endswith(".exe") else "msi"
                 platform_key = "windows-x86_64"
@@ -125,9 +127,7 @@ def get_artifact_info(artifacts_dir: Path, version: str) -> Dict[str, Any]:
 
             # Initialize platform entry if needed
             if platform_key and platform_key not in platforms:
-                platforms[platform_key] = {
-                    "installers": []
-                }
+                platforms[platform_key] = {"installers": []}
 
             # Add updater info (for Tauri)
             if is_updater and platform_key:
@@ -138,11 +138,13 @@ def get_artifact_info(artifacts_dir: Path, version: str) -> Dict[str, Any]:
 
             # Add installer info (for website downloads)
             if is_installer and platform_key and installer_format:
-                platforms[platform_key]["installers"].append({
-                    "url": f"{base_url}/{file}",
-                    "format": installer_format,
-                    "size": file_size
-                })
+                platforms[platform_key]["installers"].append(
+                    {
+                        "url": f"{base_url}/{file}",
+                        "format": installer_format,
+                        "size": file_size,
+                    }
+                )
 
     return platforms
 

@@ -81,14 +81,15 @@ def upload_artifacts(
             file_path = Path(root) / file
             # Only upload actual release files (user installers + updater files)
             if (
-                file_path.suffix in [
-                    ".dmg",      # macOS installer
-                    ".exe",      # Windows NSIS installer
-                    ".msi",      # Windows MSI installer
-                    ".deb",      # Linux Debian package
-                    ".AppImage", # Linux AppImage
-                    ".sig",      # Tauri updater signature files
-                    ".zip",      # Windows updater archive
+                file_path.suffix
+                in [
+                    ".dmg",  # macOS installer
+                    ".exe",  # Windows NSIS installer
+                    ".msi",  # Windows MSI installer
+                    ".deb",  # Linux Debian package
+                    ".AppImage",  # Linux AppImage
+                    ".sig",  # Tauri updater signature files
+                    ".zip",  # Windows updater archive
                 ]
                 or file_path.name.endswith(".tar.gz")  # macOS/Linux updater archives
             ):
