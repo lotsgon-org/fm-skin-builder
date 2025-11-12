@@ -49,10 +49,10 @@ def test_strict_mode_blocks_format_mismatch(tmp_path):
     assert "strict mode" in error
 
 
-def test_auto_convert_disabled_by_default(tmp_path):
-    """Test that auto-convert is False by default."""
+def test_auto_convert_enabled_by_default(tmp_path):
+    """Test that auto-convert is True by default (CRITICAL for format matching)."""
     options = FontSwapOptions(includes=["fonts"], dry_run=False)
-    assert options.auto_convert is False
+    assert options.auto_convert is True  # Auto-convert is now the default
     assert options.strict_format is False
 
 
