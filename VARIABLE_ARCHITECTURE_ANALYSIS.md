@@ -8,14 +8,14 @@ Looking at `css_patcher.py` lines 784-985, here's what happens:
 
 ```python
 # Phase 1: Convert variable DEFINITIONS to literals (lines 784-839)
-# Example: If --primary-color: var(--base-color) in FMColours
+# Example: If --primary-color: var(--base-color) in FigmaStyleVariables
 # And user provides: --primary-color: #FF0000
-# Result: Converts the definition to a literal color in FMColours.colors[X]
+# Result: Converts the definition to a literal color in FigmaStyleVariables.colors[X]
 
 # Phase 2: Update color values at shared indices (lines 940-985)
-# Example: If --primary-color uses colors[10] in FMColours
+# Example: If --primary-color uses colors[10] in FigmaStyleVariables
 # And user provides: --primary-color: #FF0000
-# Result: Updates FMColours.colors[10] = #FF0000
+# Result: Updates FigmaStyleVariables.colors[10] = #FF0000
 ```
 
 ### The Critical Problem
@@ -23,19 +23,19 @@ Looking at `css_patcher.py` lines 784-985, here's what happens:
 **Each USS file has its OWN `colors` array!**
 
 ```
-FMColours.uss:
+FigmaStyleVariables.uss:
   strings = ["--primary-color", "--secondary-color", ...]
   colors = [#FF0000, #00FF00, ...]  ← colors[0] = red
   :root { --primary-color: colors[0]; }
 
-inlineStyle.uss:
+FigmaGeneratedStyles.uss:
   strings = ["--primary-color", "--button-bg", ...]
   colors = [#0000FF, #FFFF00, ...]  ← colors[0] = blue (different!)
   .button { color: var(--primary-color); }  ← references colors[5] maybe
 ```
 
 **Key Insight**: When Unity serializes USS files, each file is INDEPENDENT.
-- Changing `--primary-color` definition in FMColours doesn't affect inlineStyle
+- Changing `--primary-color` definition in FigmaStyleVariables doesn't affect FigmaGeneratedStyles
 - Variable references are resolved AT BUILD TIME and stored as color indices
 - Each file has its own color palette
 
@@ -46,7 +46,7 @@ The code patches EACH FILE INDEPENDENTLY:
 ```python
 for obj in env.objects:  # Each USS file
     data = obj.read()
-    name = getattr(data, "m_Name")  # "FMColours", "inlineStyle", etc.
+    name = getattr(data, "m_Name")  # "FigmaStyleVariables", "FigmaGeneratedStyles", etc.
 
     css_vars_for_asset, selector_overrides_for_asset = self._effective_overrides(name)
 
@@ -55,8 +55,8 @@ for obj in env.objects:  # Each USS file
 ```
 
 So if user changes `--primary-color: #00FF00`:
-1. Scans FMColours → finds `--primary-color` → updates FMColours.colors[X]
-2. Scans inlineStyle → finds `--primary-color` → updates inlineStyle.colors[Y]
+1. Scans FigmaStyleVariables → finds `--primary-color` → updates FigmaStyleVariables.colors[X]
+2. Scans FigmaGeneratedStyles → finds `--primary-color` → updates FigmaGeneratedStyles.colors[Y]
 3. Each file gets its own update!
 
 **This means global variables SHOULD work... but only if the variable exists in each file!**
@@ -76,8 +76,8 @@ if unmatched_vars:
 ```
 
 **Issue**: If user adds `--new-color: #FF0000`:
-- Gets added to FMColours with FMColours.colors[N]
-- Gets added to inlineStyle with inlineStyle.colors[M]
+- Gets added to FigmaStyleVariables with FigmaStyleVariables.colors[N]
+- Gets added to FigmaGeneratedStyles with FigmaGeneratedStyles.colors[M]
 - Gets added to EVERY file independently
 - This is wasteful and confusing!
 
@@ -115,8 +115,8 @@ def _effective_overrides(self, stylesheet_name: str):
 **This applies global variables to EVERY file!**
 
 So if user provides `--primary-color: #00FF00` as a global variable:
-- FMColours gets `--primary-color: #00FF00` override
-- inlineStyle gets `--primary-color: #00FF00` override
+- FigmaStyleVariables gets `--primary-color: #00FF00` override
+- FigmaGeneratedStyles gets `--primary-color: #00FF00` override
 - Every file that has `--primary-color` gets updated
 
 **This SHOULD work correctly for existing variables!**
@@ -149,7 +149,7 @@ if unmatched_vars:
 ```json
 // mapping.json
 {
-  "new-variables": "FMColours"  // New vars go to FMColours only
+  "new-variables": "FigmaStyleVariables"  // New vars go to FigmaStyleVariables only
 }
 ```
 
@@ -157,7 +157,7 @@ OR
 
 ```css
 /* new-variables.css */
-/* @stylesheet: FMColours */
+/* @stylesheet: FigmaStyleVariables */
 :root {
     --new-color: #FF0000;
 }
@@ -166,7 +166,7 @@ OR
 **Advantages**:
 - ✅ No more spamming every file with new variables
 - ✅ User has explicit control
-- ✅ Clear intent: "This variable lives in FMColours"
+- ✅ Clear intent: "This variable lives in FigmaStyleVariables"
 - ✅ Existing global variables still work (updated in each file that has them)
 
 **Disadvantages**:
@@ -179,7 +179,7 @@ OR
 
 ```bash
 # CLI option
-fm-skin-builder patch --primary-stylesheet FMColours
+fm-skin-builder patch --primary-stylesheet FigmaStyleVariables
 ```
 
 OR
@@ -187,19 +187,19 @@ OR
 ```json
 // config.json
 {
-  "primary_stylesheet": "FMColours",
-  "fallback_stylesheet": "inlineStyle"
+  "primary_stylesheet": "FigmaStyleVariables",
+  "fallback_stylesheet": "FigmaGeneratedStyles"
 }
 ```
 
 **Behavior**:
-- New variables → add to primary stylesheet (FMColours)
-- New selectors → add to fallback stylesheet (inlineStyle)
+- New variables → add to primary stylesheet (FigmaStyleVariables)
+- New selectors → add to fallback stylesheet (FigmaGeneratedStyles)
 - Existing variables → update wherever they exist (global behavior)
 
 **Advantages**:
 - ✅ Simple configuration
-- ✅ Sensible defaults (colors → FMColours, layout → inlineStyle)
+- ✅ Sensible defaults (colors → FigmaStyleVariables, layout → FigmaGeneratedStyles)
 - ✅ Backward compatible (default = current behavior if desired)
 
 **Disadvantages**:
@@ -279,8 +279,8 @@ else:
 ### Phase 2: Add Primary Stylesheet Configuration
 ```json
 {
-  "primary_variable_stylesheet": "FMColours",
-  "primary_selector_stylesheet": "inlineStyle"
+  "primary_variable_stylesheet": "FigmaStyleVariables",
+  "primary_selector_stylesheet": "FigmaGeneratedStyles"
 }
 ```
 
@@ -292,7 +292,7 @@ else:
     ...
 
 To add new variables, either:
-  1. Add to mapping.json: {"new-vars": "FMColours"}
+  1. Add to mapping.json: {"new-vars": "FigmaStyleVariables"}
   2. Use --primary-stylesheet option
   3. Use file-specific CSS with @stylesheet comment
 ```
@@ -331,7 +331,7 @@ To add new variables, either:
    - User changes `--primary-color` → updates in all files that have it ✅
 
 2. **For new variables**: Require explicit placement
-   - Default: Add to primary_stylesheet (configurable, default = "FMColours")
+   - Default: Add to primary_stylesheet (configurable, default = "FigmaStyleVariables")
    - Override: Use mapping.json or @stylesheet comment
    - Fallback: Warn and skip if no target specified
 

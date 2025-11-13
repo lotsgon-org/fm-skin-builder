@@ -303,13 +303,13 @@ class CssPatcher:
         self.selectors_filter = selectors_filter
         self.selector_props_filter = selector_props_filter
         # Primary stylesheets for new content (Phase 3)
-        # If set, new variables go to primary_variable_stylesheet (default: FMColours)
-        # If set, new selectors go to primary_selector_stylesheet (default: inlineStyle)
+        # If set, new variables go to primary_variable_stylesheet (default: FigmaStyleVariables)
+        # If set, new selectors go to primary_selector_stylesheet (default: FigmaGeneratedStyles)
         self.primary_variable_stylesheet = (
-            primary_variable_stylesheet.lower() if primary_variable_stylesheet else "fmcolours"
+            primary_variable_stylesheet.lower() if primary_variable_stylesheet else "figmastylevariables"
         )
         self.primary_selector_stylesheet = (
-            primary_selector_stylesheet.lower() if primary_selector_stylesheet else "inlinestyle"
+            primary_selector_stylesheet.lower() if primary_selector_stylesheet else "figmageneratedstyles"
         )
 
     def patch_bundle_file(

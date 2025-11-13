@@ -9,11 +9,11 @@
    - Three levels of overrides:
      - **Global**: Applied to all stylesheets
      - **Asset-specific** (via mapping.json): Applied to specific named stylesheets
-     - **File stem matching**: Automatically matches `FMColours.uss` → `FMColours` stylesheet
+     - **File stem matching**: Automatically matches `FigmaStyleVariables.uss` → `FigmaStyleVariables` stylesheet
 
 2. **Stylesheet Processing** (`css_patcher.py`)
    - Iterates through all MonoBehaviour objects with `colors`/`strings` (StyleSheets)
-   - Each stylesheet has `m_Name` attribute (e.g., "FMColours", "inlineStyle", etc.)
+   - Each stylesheet has `m_Name` attribute (e.g., "FigmaStyleVariables", "FigmaGeneratedStyles", etc.)
    - Gets effective overrides by merging: global + asset-specific + file stem
    - Processes each stylesheet independently
 
@@ -25,7 +25,7 @@
 ### Issues Identified
 
 1. **Cross-File Blindness**: When processing stylesheet A, we can't see what's in stylesheet B
-2. **Duplicate Selector Addition**: Phase 3 might add `.green` to inlineStyle even though it exists in FMColours
+2. **Duplicate Selector Addition**: Phase 3 might add `.green` to FigmaGeneratedStyles even though it exists in FigmaStyleVariables
 3. **No Conflict Detection**: System doesn't warn when same selector exists in multiple files
 4. **User Confusion**: Users think in terms of "one CSS file" but Unity has many USS files
 5. **Naming Issues**: Logs might be confusing about which stylesheet is being modified
@@ -41,9 +41,9 @@
 ```python
 # Before Phase 3, scan all stylesheets and build registry
 global_selector_registry = {
-    ".green": ["FMColours", "inlineStyle"],  # Exists in 2 files
-    ".button": ["inlineStyle"],  # Exists in 1 file
-    "--primary-color": ["FMColours"],  # Variable in 1 file
+    ".green": ["FigmaStyleVariables", "FigmaGeneratedStyles"],  # Exists in 2 files
+    ".button": ["FigmaGeneratedStyles"],  # Exists in 1 file
+    "--primary-color": ["FigmaStyleVariables"],  # Variable in 1 file
 }
 
 # Phase 3.2: Check global registry before adding
@@ -55,7 +55,7 @@ if selector not in existing_selector_texts and selector not in global_selector_r
 #### Advantages
 ✅ Prevents duplicate selectors across files
 ✅ Minimal code changes (one pass before Phase 3)
-✅ Can provide warnings: "`.green` already exists in FMColours, skipping..."
+✅ Can provide warnings: "`.green` already exists in FigmaStyleVariables, skipping..."
 ✅ Users see cleaner output without duplication
 
 #### Disadvantages
@@ -75,10 +75,10 @@ if selector not in existing_selector_texts and selector not in global_selector_r
 // mapping.json
 {
   "global.css": "*",  // Apply to ALL stylesheets
-  "colours.css": ["FMColours", "inlineStyle"],  // Apply to specific stylesheets
-  "layout.css": "inlineStyle",  // Apply to single stylesheet
+  "colours.css": ["FigmaStyleVariables", "FigmaGeneratedStyles"],  // Apply to specific stylesheets
+  "layout.css": "FigmaGeneratedStyles",  // Apply to single stylesheet
   "overrides.css": {
-    "stylesheets": ["inlineStyle"],
+    "stylesheets": ["FigmaGeneratedStyles"],
     "mode": "merge"  // or "replace"
   }
 }
@@ -86,7 +86,7 @@ if selector not in existing_selector_texts and selector not in global_selector_r
 
 **Smart Defaults**:
 - If no mapping.json: All CSS is global (current behavior)
-- Auto-detect: `FMColours.css` → `FMColours` stylesheet (by stem name)
+- Auto-detect: `FigmaStyleVariables.css` → `FigmaStyleVariables` stylesheet (by stem name)
 - Special keyword: `"*"` = all stylesheets
 
 #### Advantages
@@ -111,21 +111,21 @@ if selector not in existing_selector_texts and selector not in global_selector_r
 ```css
 /* skin.css - User writes ONE file */
 
-/* Variables automatically go to FMColours (or root stylesheet) */
+/* Variables automatically go to FigmaStyleVariables (or root stylesheet) */
 :root {
     --primary-color: #1976d2;
     --secondary-color: #424242;
 }
 
 /* Selectors automatically distributed based on "hints" */
-.green { color: green; }  /* System detects: already in FMColours, update there */
-.new-class { color: red; } /* System detects: doesn't exist, add to inlineStyle */
+.green { color: green; }  /* System detects: already in FigmaStyleVariables, update there */
+.new-class { color: red; } /* System detects: doesn't exist, add to FigmaGeneratedStyles */
 
 /* Or explicit targeting with comments */
-/* @stylesheet: FMColours */
+/* @stylesheet: FigmaStyleVariables */
 .button-primary { background: var(--primary-color); }
 
-/* @stylesheet: inlineStyle */
+/* @stylesheet: FigmaGeneratedStyles */
 .layout-container { display: flex; }
 ```
 
@@ -133,9 +133,9 @@ if selector not in existing_selector_texts and selector not in global_selector_r
 1. Scan all USS files to find existing selectors/variables
 2. For each CSS rule:
    - If selector exists in USS file X → update X
-   - If new selector → add to "primary" USS file (configurable, default: inlineStyle)
+   - If new selector → add to "primary" USS file (configurable, default: FigmaGeneratedStyles)
    - If explicit `@stylesheet` comment → use that file
-3. Variables go to root stylesheet or FMColours by default
+3. Variables go to root stylesheet or FigmaStyleVariables by default
 
 #### Advantages
 ✅ **User Experience**: Users think in normal CSS terms
@@ -163,11 +163,11 @@ Since we already extract CSS classes and variables into the catalogue, use that 
 # During CSS extraction (catalogue phase)
 catalogue = {
     "css_classes": [
-        {"name": ".green", "stylesheet": "FMColours", "bundle": "ui.bundle"},
-        {"name": ".button", "stylesheet": "inlineStyle", "bundle": "ui.bundle"},
+        {"name": ".green", "stylesheet": "FigmaStyleVariables", "bundle": "ui.bundle"},
+        {"name": ".button", "stylesheet": "FigmaGeneratedStyles", "bundle": "ui.bundle"},
     ],
     "css_variables": [
-        {"name": "--primary-color", "stylesheet": "FMColours", ...},
+        {"name": "--primary-color", "stylesheet": "FigmaStyleVariables", ...},
     ]
 }
 
@@ -175,7 +175,7 @@ catalogue = {
 # 1. Load catalogue to know what exists where
 # 2. For each override, find existing location
 if ".green" in user_css:
-    existing_location = catalogue.find_selector(".green")  # Returns "FMColours"
+    existing_location = catalogue.find_selector(".green")  # Returns "FigmaStyleVariables"
     patch_stylesheet(existing_location, ".green", user_css[".green"])
 else:
     # Doesn't exist anywhere, add to target stylesheet
@@ -185,7 +185,7 @@ else:
 #### Advantages
 ✅ Leverages existing catalogue infrastructure
 ✅ Knows exact location of every selector/variable
-✅ Can show users: "Updated `.green` in FMColours (line 42)"
+✅ Can show users: "Updated `.green` in FigmaStyleVariables (line 42)"
 ✅ Enables powerful queries: "Where is this selector defined?"
 
 #### Disadvantages
@@ -230,7 +230,7 @@ Combine the best parts of multiple solutions:
 1. ✅ Fix NameError with `unmatched_selectors` (DONE)
 2. Add global selector registry before Phase 3
 3. Update Phase 3.2 to check global registry
-4. Add logging: "Selector `.green` already exists in FMColours, skipping"
+4. Add logging: "Selector `.green` already exists in FigmaStyleVariables, skipping"
 
 ### Short-term (Better UX)
 1. Enhance mapping.json parser to support wildcards
@@ -267,15 +267,15 @@ skin/
 // mapping.json
 {
   "global": "*",  // global.css → all stylesheets
-  "colours": "FMColours",  // colours.css → FMColours only
-  "layout": "inlineStyle"  // layout.css → inlineStyle only
+  "colours": "FigmaStyleVariables",  // colours.css → FigmaStyleVariables only
+  "layout": "FigmaGeneratedStyles"  // layout.css → FigmaGeneratedStyles only
 }
 ```
 
 ### Example 3: Smart Mode (Future)
 ```bash
 # CLI command
-fm-skin-builder patch --css-mode=smart --primary-stylesheet=inlineStyle
+fm-skin-builder patch --css-mode=smart --primary-stylesheet=FigmaGeneratedStyles
 ```
 
 ---
@@ -292,10 +292,10 @@ fm-skin-builder patch --css-mode=smart --primary-stylesheet=inlineStyle
 
 2. **Default Target for New Selectors**
    - Always global (apply to all)?
-   - Always inlineStyle (common base)?
+   - Always FigmaGeneratedStyles (common base)?
    - Configurable via CLI/config?
 
-   **Recommendation**: Configurable, default to inlineStyle
+   **Recommendation**: Configurable, default to FigmaGeneratedStyles
 
 3. **Catalogue Dependency**
    - Should CSS patcher require catalogue?

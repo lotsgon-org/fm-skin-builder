@@ -13,16 +13,16 @@ Implemented hybrid Option A/B solution for multi-file CSS handling that prevents
 - `fm_skin_builder/core/services.py`
 
 **New Parameters:**
-- `primary_variable_stylesheet`: Target stylesheet for new variables (default: "fmcolours")
-- `primary_selector_stylesheet`: Target stylesheet for new selectors (default: "inlinestyle")
+- `primary_variable_stylesheet`: Target stylesheet for new variables (default: "figmastylevariables")
+- `primary_selector_stylesheet`: Target stylesheet for new selectors (default: "figmageneratedstyles")
 
 **Configuration:**
 ```python
 # CssPatchOptions dataclass
 @dataclass
 class CssPatchOptions:
-    primary_variable_stylesheet: Optional[str] = None  # Default: "fmcolours"
-    primary_selector_stylesheet: Optional[str] = None  # Default: "inlinestyle"
+    primary_variable_stylesheet: Optional[str] = None  # Default: "figmastylevariables"
+    primary_selector_stylesheet: Optional[str] = None  # Default: "figmageneratedstyles"
 ```
 
 ### 2. Enhanced _effective_overrides Method
@@ -73,8 +73,8 @@ if truly_new_selectors:
 
 **When adding new content:**
 ```
-[PHASE 3.1] Adding 5 new CSS variables to FMColours (primary variable stylesheet)
-[ADDED] 5 new CSS variables to FMColours
+[PHASE 3.1] Adding 5 new CSS variables to FigmaStyleVariables (primary variable stylesheet)
+[ADDED] 5 new CSS variables to FigmaStyleVariables
 ```
 
 OR
@@ -86,12 +86,12 @@ OR
 
 **When skipping:**
 ```
-[PHASE 3.1] Skipping 5 new variables for inlineStyle (not targeted, primary is 'fmcolours')
+[PHASE 3.1] Skipping 5 new variables for FigmaGeneratedStyles (not targeted, primary is 'figmastylevariables')
   Variables: --new-color-1, --new-color-2, --new-color-3, --new-color-4, --new-color-5
 ```
 
 ```
-[PHASE 3.2] Skipping 2 new selector properties for OtherSheet (not targeted, primary is 'inlinestyle')
+[PHASE 3.2] Skipping 2 new selector properties for OtherSheet (not targeted, primary is 'figmageneratedstyles')
   Selectors: .new-class, .another-class
 ```
 
@@ -112,13 +112,13 @@ OR
 **Scenario:** User adds `--new-color: #FF0000` (variable doesn't exist anywhere)
 
 **Old Behavior:**
-- Added to FMColours ❌
-- Added to inlineStyle ❌
+- Added to FigmaStyleVariables ❌
+- Added to FigmaGeneratedStyles ❌
 - Added to every other stylesheet ❌❌❌
 - Result: SPAM!
 
 **New Behavior:**
-- Added to FMColours ONLY ✅ (primary_variable_stylesheet)
+- Added to FigmaStyleVariables ONLY ✅ (primary_variable_stylesheet)
 - Skipped for all other stylesheets ✅
 - Result: Clean and intentional!
 
@@ -130,7 +130,7 @@ OR
 - Added to every stylesheet ❌❌❌
 
 **New Behavior:**
-- Added to inlineStyle ONLY ✅ (primary_selector_stylesheet)
+- Added to FigmaGeneratedStyles ONLY ✅ (primary_selector_stylesheet)
 - Skipped for all other stylesheets ✅
 
 ---
@@ -165,16 +165,16 @@ OR
 ```
 
 **Result:**
-- Both variables added to FMColours ONLY ✅
-- Not added to inlineStyle, OtherStyles, etc. ✅
+- Both variables added to FigmaStyleVariables ONLY ✅
+- Not added to FigmaGeneratedStyles, OtherStyles, etc. ✅
 - Clean output, no spam!
 
 **Logs:**
 ```
-[PHASE 3.1] Adding 2 new CSS variables to FMColours (primary variable stylesheet)
-[ADDED] 2 new CSS variables to FMColours
+[PHASE 3.1] Adding 2 new CSS variables to FigmaStyleVariables (primary variable stylesheet)
+[ADDED] 2 new CSS variables to FigmaStyleVariables
 
-[PHASE 3.1] Skipping 2 new variables for inlineStyle (not targeted, primary is 'fmcolours')
+[PHASE 3.1] Skipping 2 new variables for FigmaGeneratedStyles (not targeted, primary is 'figmastylevariables')
   Variables: --new-brand-color, --new-accent
 ```
 
@@ -185,8 +185,8 @@ OR
 **mapping.json:**
 ```json
 {
-  "brand-colors": "FMColours",
-  "layout-variables": "inlineStyle"
+  "brand-colors": "FigmaStyleVariables",
+  "layout-variables": "FigmaGeneratedStyles"
 }
 ```
 
@@ -209,17 +209,17 @@ OR
 ```
 
 **Result:**
-- Brand colors → FMColours ONLY ✅
-- Layout variables → inlineStyle ONLY ✅
+- Brand colors → FigmaStyleVariables ONLY ✅
+- Layout variables → FigmaGeneratedStyles ONLY ✅
 - Perfect organization!
 
 **Logs:**
 ```
-[PHASE 3.1] Adding 12 new CSS variables to FMColours (explicit targeting)
-[ADDED] 12 new CSS variables to FMColours
+[PHASE 3.1] Adding 12 new CSS variables to FigmaStyleVariables (explicit targeting)
+[ADDED] 12 new CSS variables to FigmaStyleVariables
 
-[PHASE 3.1] Adding 12 new CSS variables to inlineStyle (explicit targeting)
-[ADDED] 12 new CSS variables to inlineStyle
+[PHASE 3.1] Adding 12 new CSS variables to FigmaGeneratedStyles (explicit targeting)
+[ADDED] 12 new CSS variables to FigmaGeneratedStyles
 ```
 
 ### Workflow 4: Configure Primary Stylesheets
@@ -258,7 +258,7 @@ fm-skin-builder patch \
 - ✅ Everything works as before
 
 **If you add new variables:**
-- 📝 Check where they're added (now goes to FMColours by default)
+- 📝 Check where they're added (now goes to FigmaStyleVariables by default)
 - 📝 If you want different behavior:
   - Option 1: Use mapping.json to target specific files
   - Option 2: Configure primary stylesheets
@@ -300,12 +300,12 @@ should_add = (
 self.primary_variable_stylesheet = (
     primary_variable_stylesheet.lower()
     if primary_variable_stylesheet
-    else "fmcolours"
+    else "figmastylevariables"
 )
 self.primary_selector_stylesheet = (
     primary_selector_stylesheet.lower()
     if primary_selector_stylesheet
-    else "inlinestyle"
+    else "figmageneratedstyles"
 )
 ```
 
@@ -317,7 +317,7 @@ self.primary_selector_stylesheet = (
 
 **Setup:**
 - colours.css (global, no mapping.json)
-- Stylesheets: FMColours, inlineStyle, OtherStyles
+- Stylesheets: FigmaStyleVariables, FigmaGeneratedStyles, OtherStyles
 
 **CSS:**
 ```css
@@ -329,11 +329,11 @@ self.primary_selector_stylesheet = (
 
 **Result:**
 ```
-Processing FMColours:
+Processing FigmaStyleVariables:
   --existing-var: Updated ✅
   --new-var: Added (primary) ✅
 
-Processing inlineStyle:
+Processing FigmaGeneratedStyles:
   --existing-var: Updated ✅
   --new-var: Skipped (not primary) ✅
 
@@ -362,11 +362,11 @@ Processing CustomSheet:
   --custom-1: Added (explicit targeting) ✅
   --custom-2: Added (explicit targeting) ✅
 
-Processing FMColours:
+Processing FigmaStyleVariables:
   --custom-1: Skipped (not targeted, not primary) ✅
   --custom-2: Skipped (not targeted, not primary) ✅
 
-Processing inlineStyle:
+Processing FigmaGeneratedStyles:
   --custom-1: Skipped (not targeted, not primary) ✅
   --custom-2: Skipped (not targeted, not primary) ✅
 ```
@@ -376,7 +376,7 @@ Processing inlineStyle:
 **Setup:**
 - global.css (no mapping)
 - specific.css → mapping.json: {"specific": "SpecialStyles"}
-- Stylesheets: FMColours, inlineStyle, SpecialStyles
+- Stylesheets: FigmaStyleVariables, FigmaGeneratedStyles, SpecialStyles
 
 **global.css:**
 ```css
@@ -394,11 +394,11 @@ Processing inlineStyle:
 
 **Result:**
 ```
-Processing FMColours:
+Processing FigmaStyleVariables:
   --global-new: Added (primary) ✅
   --specific-new: Skipped (not targeted) ✅
 
-Processing inlineStyle:
+Processing FigmaGeneratedStyles:
   --global-new: Skipped (not primary) ✅
   --specific-new: Skipped (not targeted) ✅
 
@@ -432,7 +432,7 @@ Processing SpecialStyles:
 1. **Global Selector Registry**
    - Pre-scan all stylesheets
    - Detect when selectors exist in other files
-   - Warn: "`.green` already exists in FMColours, updating there instead"
+   - Warn: "`.green` already exists in FigmaStyleVariables, updating there instead"
 
 2. **Smart Update Mode**
    - If selector exists in another file, update it there
@@ -452,10 +452,10 @@ Processing SpecialStyles:
 
 **Manual Testing Scenarios:**
 
-1. ✅ Add new variable (no mapping) → Should go to FMColours only
+1. ✅ Add new variable (no mapping) → Should go to FigmaStyleVariables only
 2. ✅ Add new variable (with mapping) → Should go to mapped stylesheet
 3. ✅ Modify existing variable → Should update all files
-4. ✅ Add new selector → Should go to inlineStyle only
+4. ✅ Add new selector → Should go to FigmaGeneratedStyles only
 5. ✅ Configure custom primary → Should respect configuration
 6. ✅ Check logging → Should clearly show add vs skip decisions
 
