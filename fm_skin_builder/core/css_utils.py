@@ -249,9 +249,21 @@ def build_selector_from_parts(parts) -> str:
     return selector or "*"
 
 
-def serialize_stylesheet_to_uss(data) -> str:
-    """Serialize a StyleSheet MonoBehaviour to a .uss-like text for debugging."""
+def serialize_stylesheet_to_uss(data, debug_comments: bool = False, sort_properties: bool = True) -> str:
+    """
+    Serialize a StyleSheet MonoBehaviour to a .uss-like text.
+
+    Args:
+        data: Unity StyleSheet data
+        debug_comments: If True, include debug comments with type/index info
+        sort_properties: If True, sort properties in a logical order (position, display, dimensions, etc.)
+
+    Returns:
+        USS-formatted string
+    """
     import re as _re
+    from collections import defaultdict
+    from typing import Dict, List as TList, Tuple as TTuple
 
     def color_to_hex(c):
         r = int(round(c.r * 255))
@@ -271,13 +283,41 @@ def serialize_stylesheet_to_uss(data) -> str:
         else []
     )
 
+    # Unity USS Value Types:
+    # Type 1: Keyword (auto, none, center, etc.)
+    # Type 2: Float/Dimension (stored in floats array)
+    # Type 3: Dimension string (like "10px", "50%") - stored in strings
+    # Type 4: Color (stored in colors array)
+    # Type 5: Resource path (url(...))
+    # Type 6: Asset reference
+    # Type 7: Enum (integer values)
+    # Type 8: String literal
+    # Type 9: Missing asset reference
+    # Type 10: Variable name (like "--my-var")
+    # Type 11: Function call (like "var(--my-var)")
+
+    # Properties that expect color values
     color_properties = {
         "color",
         "background-color",
         "border-color",
+        "border-left-color",
+        "border-right-color",
+        "border-top-color",
+        "border-bottom-color",
         "-unity-background-image-tint-color",
     }
-    lines: List[str] = []
+
+    # Multi-value shorthand properties (space-separated)
+    multi_value_shorthands = {
+        "margin": 4,        # top right bottom left
+        "padding": 4,       # top right bottom left
+        "border-width": 4,  # top right bottom left
+        "border-radius": 4, # top-left top-right bottom-right bottom-left
+        "border-color": 4,  # top right bottom left
+    }
+
+    lines: TList[str] = []
 
     for sel in selectors:
         rule_idx = getattr(sel, "ruleIndex", None)
@@ -299,59 +339,353 @@ def serialize_stylesheet_to_uss(data) -> str:
                     selector_text += str(val)
         selector_text = selector_text or "*"
         lines.append(f"{selector_text} {{")
+
         rule = rules[rule_idx]
+
+        # Group all values by property name
+        property_values: Dict[str, TList[TTuple[int, int, str]]] = defaultdict(list)
         for prop in getattr(rule, "m_Properties", []):
             prop_name = getattr(prop, "m_Name", "")
             values = list(getattr(prop, "m_Values", []))
-            type4_vals = [v for v in values if getattr(v, "m_ValueType", None) == 4]
-            if type4_vals:
-                for val in type4_vals:
-                    value_type = getattr(val, "m_ValueType", None)
-                    value_index = getattr(val, "valueIndex", None)
-                    comment = f"rule={rule_idx}, type={value_type}, index={value_index}"
-                    if value_type == 4 and 0 <= value_index < len(colors):
-                        col = colors[value_index]
-                        lines.append(
-                            f"  {prop_name}: {color_to_hex(col)}; /* {comment}, src=colors */"
-                        )
-                continue
+
             for val in values:
                 value_type = getattr(val, "m_ValueType", None)
                 value_index = getattr(val, "valueIndex", None)
-                comment = f"rule={rule_idx}, type={value_type}, index={value_index}"
-                if value_type == 3 and 0 <= value_index < len(strings):
-                    varname = strings[value_index]
-                    lines.append(
-                        f"  {prop_name}: var({varname}); /* {comment}, src=strings */"
-                    )
-                elif value_type == 8 and 0 <= value_index < len(strings):
-                    varname = strings[value_index]
-                    varname = _re.sub(r"^-+", "--", varname)
-                    lines.append(
-                        f"  {prop_name}: {varname}; /* {comment}, src=strings */"
-                    )
-                elif value_type == 2 and 0 <= value_index < len(floats):
-                    val_float = floats[value_index]
-                    if prop_name in color_properties:
-                        lines.append(
-                            f"  /* {prop_name}: {val_float}; [SKIPPED: not valid CSS color] {comment}, src=floats */"
-                        )
-                    else:
-                        lines.append(
-                            f"  {prop_name}: {val_float}; /* {comment}, src=floats */"
-                        )
-                elif value_type == 10 and 0 <= value_index < len(strings):
-                    varname = strings[value_index]
-                    varname = _re.sub(r"^-+", "--", varname)
-                    lines.append(
-                        f"  {prop_name}: {varname}; /* {comment}, src=strings */"
-                    )
-                else:
-                    lines.append(
-                        f"  {prop_name}: {value_index}; /* {comment}, src=unknown */"
-                    )
+
+                if value_type is None or value_index is None:
+                    continue
+
+                # Format the value based on its type
+                formatted_value = _format_uss_value(
+                    value_type, value_index, strings, colors, floats, prop_name
+                )
+
+                if formatted_value:
+                    property_values[prop_name].append((value_type, value_index, formatted_value))
+
+        # Output each property once with the correct value(s)
+        # Sort properties in a logical order if requested
+        prop_names = property_values.keys()
+        if sort_properties:
+            prop_names = _sort_properties(list(prop_names))
+
+        for prop_name in prop_names:
+            values = property_values[prop_name]
+
+            if len(values) == 0:
+                continue
+
+            # Pick the best value(s) for this property
+            final_value, comment_info = _pick_best_value(
+                prop_name, values, multi_value_shorthands, color_properties
+            )
+
+            if debug_comments and comment_info:
+                lines.append(f"  {prop_name}: {final_value}; /* {comment_info} */")
+            else:
+                lines.append(f"  {prop_name}: {final_value};")
+
         lines.append("}")
     return "\n".join(lines)
+
+
+def _sort_properties(prop_names: List[str]) -> List[str]:
+    """
+    Sort CSS properties in a logical order for better readability.
+
+    Order: Position → Display → Flex → Dimensions → Spacing → Border → Background → Text → Transform → Transition → Others
+    """
+    property_order = {
+        # Position (highest priority)
+        "position": 0,
+        "top": 1,
+        "right": 2,
+        "bottom": 3,
+        "left": 4,
+
+        # Display
+        "display": 10,
+        "visibility": 11,
+        "opacity": 12,
+        "overflow": 13,
+
+        # Flexbox
+        "flex-direction": 20,
+        "flex-wrap": 21,
+        "justify-content": 22,
+        "align-items": 23,
+        "align-self": 24,
+        "flex-grow": 25,
+        "flex-shrink": 26,
+        "flex-basis": 27,
+
+        # Dimensions
+        "width": 30,
+        "height": 31,
+        "min-width": 32,
+        "min-height": 33,
+        "max-width": 34,
+        "max-height": 35,
+
+        # Margin
+        "margin": 40,
+        "margin-top": 41,
+        "margin-right": 42,
+        "margin-bottom": 43,
+        "margin-left": 44,
+
+        # Padding
+        "padding": 50,
+        "padding-top": 51,
+        "padding-right": 52,
+        "padding-bottom": 53,
+        "padding-left": 54,
+
+        # Border
+        "border-width": 60,
+        "border-top-width": 61,
+        "border-right-width": 62,
+        "border-bottom-width": 63,
+        "border-left-width": 64,
+        "border-color": 65,
+        "border-top-color": 66,
+        "border-right-color": 67,
+        "border-bottom-color": 68,
+        "border-left-color": 69,
+        "border-radius": 70,
+        "border-top-left-radius": 71,
+        "border-top-right-radius": 72,
+        "border-bottom-left-radius": 73,
+        "border-bottom-right-radius": 74,
+
+        # Background
+        "background-color": 80,
+        "background-image": 81,
+        "-unity-background-image-tint-color": 82,
+        "-unity-background-scale-mode": 83,
+
+        # Text/Font
+        "color": 90,
+        "font-size": 91,
+        "-unity-font": 92,
+        "-unity-font-definition": 93,
+        "-unity-font-style": 94,
+        "font-weight": 95,
+        "-unity-text-align": 96,
+        "-unity-text-outline-width": 97,
+        "-unity-text-outline-color": 98,
+        "white-space": 99,
+        "text-overflow": 100,
+
+        # Transform
+        "rotate": 110,
+        "scale": 111,
+        "translate": 112,
+        "transform-origin": 113,
+
+        # Transition
+        "transition-property": 120,
+        "transition-duration": 121,
+        "transition-timing-function": 122,
+        "transition-delay": 123,
+
+        # Cursor
+        "cursor": 130,
+
+        # Unity-specific (lower priority)
+        "-unity-slice-left": 200,
+        "-unity-slice-top": 201,
+        "-unity-slice-right": 202,
+        "-unity-slice-bottom": 203,
+        "-unity-paragraph-spacing": 204,
+        "-unity-text-overflow-position": 205,
+    }
+
+    def get_sort_key(prop: str) -> Tuple[int, str]:
+        """Get sort key for a property. Returns (order, property_name)."""
+        order = property_order.get(prop, 999)  # Unknown properties at end
+        return (order, prop)
+
+    return sorted(prop_names, key=get_sort_key)
+
+
+def _format_uss_value(
+    value_type: int,
+    value_index: int,
+    strings: List[str],
+    colors: List[Any],
+    floats: List[float],
+    prop_name: str,
+) -> Optional[str]:
+    """
+    Format a Unity USS value based on its type.
+
+    Returns:
+        Formatted value string, or None if invalid
+    """
+    import re as _re
+
+    if value_type == 1:  # Keyword
+        # Type 1 uses string index for keyword values
+        if 0 <= value_index < len(strings):
+            return strings[value_index]
+        return None
+
+    elif value_type == 2:  # Float/Dimension
+        if 0 <= value_index < len(floats):
+            val_float = floats[value_index]
+            # Unity stores dimensions as floats (pixels)
+            if val_float == int(val_float):
+                return f"{int(val_float)}px"
+            else:
+                return f"{val_float:.2f}px"
+        return None
+
+    elif value_type == 3:  # Dimension string (like "10px", "50%", "auto")
+        if 0 <= value_index < len(strings):
+            return strings[value_index]
+        return None
+
+    elif value_type == 4:  # Color
+        if 0 <= value_index < len(colors):
+            col = colors[value_index]
+            r = int(round(col.r * 255))
+            g = int(round(col.g * 255))
+            b = int(round(col.b * 255))
+            if hasattr(col, "a") and col.a < 1.0:
+                return f"rgba({r}, {g}, {b}, {col.a:.2f})"
+            return f"#{r:02X}{g:02X}{b:02X}"
+        return None
+
+    elif value_type == 5:  # Resource path
+        if 0 <= value_index < len(strings):
+            path = strings[value_index]
+            return f"url('{path}')"
+        return None
+
+    elif value_type == 7:  # Enum (integer)
+        # Enum values are stored as integers in the index itself
+        return str(value_index)
+
+    elif value_type == 8:  # String literal
+        if 0 <= value_index < len(strings):
+            value = strings[value_index]
+            # Normalize variable names (ensure they start with --)
+            if _re.match(r"^-[\w-]+$", value):
+                value = _re.sub(r"^-+", "--", value)
+            return value
+        return None
+
+    elif value_type == 10:  # Variable name (should be wrapped in var())
+        if 0 <= value_index < len(strings):
+            varname = strings[value_index]
+            # Normalize variable name
+            varname = _re.sub(r"^-+", "--", varname)
+            # Wrap in var() function
+            return f"var({varname})"
+        return None
+
+    elif value_type == 11:  # Function call (already formatted)
+        if 0 <= value_index < len(strings):
+            return strings[value_index]
+        return None
+
+    return None
+
+
+def _pick_best_value(
+    prop_name: str,
+    values: List[Tuple[int, int, str]],
+    multi_value_shorthands: Dict[str, int],
+    color_properties: set,
+) -> Tuple[str, str]:
+    """
+    Pick the best value(s) for a property from multiple candidates.
+
+    Args:
+        prop_name: Property name
+        values: List of (type, index, formatted_value) tuples
+        multi_value_shorthands: Dict of multi-value property names
+        color_properties: Set of color property names
+
+    Returns:
+        Tuple of (final_value, debug_comment)
+    """
+    if len(values) == 0:
+        return ("", "")
+
+    # For multi-value shorthands, combine valid values
+    if prop_name in multi_value_shorthands:
+        expected_count = multi_value_shorthands[prop_name]
+        # Filter out invalid values
+        valid_values = [
+            (vtype, idx, val) for vtype, idx, val in values
+            if not _is_invalid_value(val, prop_name, vtype, color_properties)
+        ]
+
+        if len(valid_values) > 0:
+            # Take up to expected_count values
+            selected = valid_values[:expected_count]
+            combined = " ".join(val for _, _, val in selected)
+            type_info = ", ".join(f"type={vtype}" for vtype, _, _ in selected)
+            return (combined, type_info)
+
+    # For single-value properties, pick the best value
+    # Priority: Type 4 (color) > Type 11 (function) > Type 10 (var) > Type 3 (dimension) > Type 8 (string) > Type 2 (float)
+
+    # Filter out invalid values first
+    valid_values = [
+        (vtype, idx, val) for vtype, idx, val in values
+        if not _is_invalid_value(val, prop_name, vtype, color_properties)
+    ]
+
+    if len(valid_values) == 0:
+        # All values are invalid, return the last one anyway
+        vtype, idx, val = values[-1]
+        return (val, f"type={vtype}, index={idx} (fallback)")
+
+    # Pick best value based on priority
+    if prop_name in color_properties:
+        # For color properties, prefer color values
+        color_vals = [(vt, vi, v) for vt, vi, v in valid_values if vt == 4]
+        if color_vals:
+            vtype, idx, val = color_vals[0]
+            return (val, f"type={vtype}, color[{idx}]")
+
+    # Priority order for non-color properties
+    type_priority = {11: 0, 10: 1, 3: 2, 8: 3, 4: 4, 2: 5, 1: 6, 5: 7, 7: 8}
+
+    sorted_values = sorted(valid_values, key=lambda x: type_priority.get(x[0], 99))
+    vtype, idx, val = sorted_values[0]
+
+    return (val, f"type={vtype}")
+
+
+def _is_invalid_value(value: str, prop_name: str, value_type: int, color_properties: set) -> bool:
+    """
+    Check if a value is invalid for the given property.
+
+    Returns:
+        True if the value should be skipped
+    """
+    # Skip obviously invalid values
+    if value_type == 10 and ("absolute" in value or "invalid" in value):
+        # Invalid variable references
+        return True
+
+    if value in ("absolute", "1.0px", "0.0px") and value_type in (2, 10):
+        # These are likely parsing errors
+        return True
+
+    # Skip color values for non-color properties
+    if prop_name not in color_properties and value_type == 4:
+        return False  # Actually, colors might be valid in some contexts
+
+    # Skip dimension values for color properties
+    if prop_name in color_properties and value_type in (2, 3):
+        return True
+
+    return False
 
 
 def clean_for_json(obj, seen=None, max_depth: int = 10):

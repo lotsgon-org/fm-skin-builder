@@ -1176,8 +1176,18 @@ class CssPatcher:
                                             pass
 
         # Phase 3.1: Add new CSS variables that don't exist in the stylesheet
-        unmatched_vars = set(css_vars.keys()) - matched_css_vars
+        # First, check which variables already exist to avoid duplicates
+        existing_var_names = set()
+        for rule in rules:
+            for prop in getattr(rule, "m_Properties", []):
+                prop_name = getattr(prop, "m_Name", "")
+                if prop_name.startswith("--"):
+                    existing_var_names.add(prop_name)
+
+        # Only add truly new variables (not matched AND not already in stylesheet)
+        unmatched_vars = set(css_vars.keys()) - matched_css_vars - existing_var_names
         if unmatched_vars:
+            log.info(f"  [PHASE 3.1] Adding {len(unmatched_vars)} new CSS variables to {name}")
             new_vars_created = self._add_new_css_variables(
                 data, unmatched_vars, css_vars, name
             )
@@ -1187,10 +1197,28 @@ class CssPatcher:
                 log.info(f"  [ADDED] {new_vars_created} new CSS variables to {name}")
 
         # Phase 3.2: Add new CSS selectors that don't exist in the stylesheet
-        unmatched_selectors = set(selector_overrides.keys()) - matched_selectors
-        if unmatched_selectors:
+        # First, check which selectors already exist to avoid duplicates
+        existing_selector_texts = set()
+        complex_selectors = getattr(data, "m_ComplexSelectors", [])
+        for sel in complex_selectors:
+            # Build selector text from parts
+            if hasattr(sel, "m_Selectors") and sel.m_Selectors:
+                for s in sel.m_Selectors:
+                    parts = getattr(s, "m_Parts", [])
+                    if parts:
+                        selector_text = build_selector_from_parts(parts)
+                        existing_selector_texts.add(selector_text)
+
+        # Only add truly new selectors (not matched AND not already in stylesheet)
+        truly_new_selectors = {
+            (sel, prop) for (sel, prop) in unmatched_selectors
+            if sel not in existing_selector_texts
+        }
+
+        if truly_new_selectors:
+            log.info(f"  [PHASE 3.2] Adding {len(truly_new_selectors)} new selector properties to {name}")
             new_props_created = self._add_new_css_selectors(
-                data, unmatched_selectors, selector_overrides, name
+                data, truly_new_selectors, selector_overrides, name
             )
             if new_props_created > 0:
                 patched_vars += new_props_created
@@ -1254,9 +1282,25 @@ class CssPatcher:
 
         # If no root rule exists, create one
         if root_rule is None:
-            root_rule = SimpleNamespace()
-            setattr(root_rule, "m_Properties", [])
-            setattr(root_rule, "line", -1)
+            # Copy structure from existing rule if possible
+            if rules:
+                import copy
+                template_rule = rules[0]
+                root_rule = copy.copy(template_rule)
+                # Clear properties but keep structure
+                setattr(root_rule, "m_Properties", [])
+                # Set line to -1 to indicate synthetic rule
+                if hasattr(root_rule, "line"):
+                    setattr(root_rule, "line", -1)
+                if hasattr(root_rule, "m_Line"):
+                    setattr(root_rule, "m_Line", -1)
+            else:
+                # Fallback: create minimal structure with all required fields
+                root_rule = SimpleNamespace()
+                setattr(root_rule, "m_Properties", [])
+                setattr(root_rule, "line", -1)
+                setattr(root_rule, "m_Line", -1)
+                setattr(root_rule, "m_Column", 0)
             rules.append(root_rule)
             log.info(f"  [CREATED] New root rule in {stylesheet_name} for CSS variables")
 
@@ -1270,14 +1314,34 @@ class CssPatcher:
             value_str = css_vars[var_name]
 
             # Determine value type and create property
-            prop = SimpleNamespace()
-            setattr(prop, "m_Name", var_name)
-            setattr(prop, "m_Values", [])
+            # Copy structure from existing property if possible
+            if properties:
+                import copy
+                prop = copy.copy(properties[0])
+                setattr(prop, "m_Name", var_name)
+                setattr(prop, "m_Values", [])
+            else:
+                prop = SimpleNamespace()
+                setattr(prop, "m_Name", var_name)
+                setattr(prop, "m_Values", [])
 
             values_list = getattr(prop, "m_Values")
 
             # Create value object
-            value_obj = SimpleNamespace()
+            # Try to copy structure from existing value if available
+            existing_values = []
+            for existing_prop in properties:
+                existing_vals = getattr(existing_prop, "m_Values", [])
+                if existing_vals:
+                    existing_values.extend(existing_vals)
+                    break
+
+            if existing_values:
+                import copy
+                value_obj = copy.copy(existing_values[0])
+                # Will set m_ValueType and valueIndex below
+            else:
+                value_obj = SimpleNamespace()
 
             # Detect value type and add to appropriate array
             if _is_color_property(var_name, value_str):
@@ -1384,23 +1448,61 @@ class CssPatcher:
         for selector_text in sorted(selector_props.keys()):
             props_to_add = selector_props[selector_text]
 
-            # Create new rule
-            new_rule = SimpleNamespace()
-            setattr(new_rule, "m_Properties", [])
-            setattr(new_rule, "line", -1)
+            # Create new rule (copy from existing if possible)
+            if rules:
+                import copy
+                new_rule = copy.copy(rules[0])
+                setattr(new_rule, "m_Properties", [])
+                if hasattr(new_rule, "line"):
+                    setattr(new_rule, "line", -1)
+                if hasattr(new_rule, "m_Line"):
+                    setattr(new_rule, "m_Line", -1)
+            else:
+                new_rule = SimpleNamespace()
+                setattr(new_rule, "m_Properties", [])
+                setattr(new_rule, "line", -1)
+                setattr(new_rule, "m_Line", -1)
+                setattr(new_rule, "m_Column", 0)
             rule_index = len(rules)
             rules.append(new_rule)
 
             # Add all properties to the rule
             properties = getattr(new_rule, "m_Properties")
             for prop_name, value_str in props_to_add:
-                # Create property
-                prop = SimpleNamespace()
-                setattr(prop, "m_Name", prop_name)
-                setattr(prop, "m_Values", [])
+                # Create property (copy from existing if possible)
+                existing_prop = None
+                for rule in rules:
+                    for p in getattr(rule, "m_Properties", []):
+                        if getattr(p, "m_Name", None):
+                            existing_prop = p
+                            break
+                    if existing_prop:
+                        break
+
+                if existing_prop:
+                    import copy
+                    prop = copy.copy(existing_prop)
+                    setattr(prop, "m_Name", prop_name)
+                    setattr(prop, "m_Values", [])
+                else:
+                    prop = SimpleNamespace()
+                    setattr(prop, "m_Name", prop_name)
+                    setattr(prop, "m_Values", [])
 
                 values_list = getattr(prop, "m_Values")
-                value_obj = SimpleNamespace()
+
+                # Create value object (copy from existing if possible)
+                existing_value = None
+                if existing_prop:
+                    existing_vals = getattr(existing_prop, "m_Values", [])
+                    if existing_vals:
+                        existing_value = existing_vals[0]
+
+                if existing_value:
+                    import copy
+                    value_obj = copy.copy(existing_value)
+                else:
+                    value_obj = SimpleNamespace()
 
                 # Detect value type and add to appropriate array
                 if _is_color_property(prop_name, value_str):
@@ -1521,6 +1623,10 @@ class CssPatcher:
             Selector part object with m_Value and m_Type
         """
         part = SimpleNamespace()
+
+        # Add required fields that Unity expects
+        setattr(part, "m_Line", -1)
+        setattr(part, "m_Column", 0)
 
         # Determine selector type and value
         if selector_text.startswith("#"):

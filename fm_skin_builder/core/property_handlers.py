@@ -132,6 +132,34 @@ PROPERTY_TYPE_MAP: Dict[str, PropertyType] = {
     "align-items": PropertyType("align-items", [1, 8], 1),  # Keyword
     "align-self": PropertyType("align-self", [1, 8], 1),  # Keyword
     "justify-content": PropertyType("justify-content", [1, 8], 1),  # Keyword
+
+    # Transform properties
+    "rotate": PropertyType("rotate", [2], 2),  # Angle (float in degrees)
+    "scale": PropertyType("scale", [2], 2),  # Scale factor (float)
+    "translate": PropertyType("translate", [2], 2),  # X and Y translation
+    "transform-origin": PropertyType("transform-origin", [2], 2),  # X and Y origin
+
+    # Transition properties
+    "transition-property": PropertyType("transition-property", [8], 8),  # Property name(s)
+    "transition-duration": PropertyType("transition-duration", [2], 2),  # Time in seconds
+    "transition-timing-function": PropertyType("transition-timing-function", [1, 8], 1),  # Keyword/function
+    "transition-delay": PropertyType("transition-delay", [2], 2),  # Time in seconds
+
+    # Cursor
+    "cursor": PropertyType("cursor", [1, 8, 7], 1),  # Keyword or resource
+
+    # Text overflow
+    "text-overflow": PropertyType("text-overflow", [1, 8], 1),  # Keyword (clip, ellipsis)
+
+    # Unity-specific slice properties for 9-slice scaling
+    "-unity-slice-left": PropertyType("-unity-slice-left", [2], 2),
+    "-unity-slice-top": PropertyType("-unity-slice-top", [2], 2),
+    "-unity-slice-right": PropertyType("-unity-slice-right", [2], 2),
+    "-unity-slice-bottom": PropertyType("-unity-slice-bottom", [2], 2),
+
+    # Unity-specific paragraph properties
+    "-unity-paragraph-spacing": PropertyType("-unity-paragraph-spacing", [2], 2),
+    "-unity-text-overflow-position": PropertyType("-unity-text-overflow-position", [1, 8], 1),
 }
 
 
