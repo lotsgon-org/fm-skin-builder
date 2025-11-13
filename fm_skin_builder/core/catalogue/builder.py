@@ -162,13 +162,38 @@ class CatalogueBuilder:
         log.info(f"   - {len(self.fonts)} fonts")
 
     def _expand_bundle_paths(self, paths: List[Path]) -> List[Path]:
-        """Expand directories to .bundle files."""
+        """
+        Expand directories to .bundle files, excluding backup/modified files.
+
+        Excludes:
+        - Files ending with _modified.bundle
+        - Files ending with .bak
+        - Files ending with .bundle.bak
+        """
         bundles = []
+        excluded_patterns = [
+            '_modified.bundle',
+            '.bak',
+            '.bundle.bak',
+            '_temp.bundle',
+            '.tmp',
+        ]
+
         for path in paths:
             if path.is_dir():
-                bundles.extend(sorted(path.glob("**/*.bundle")))
+                for bundle in sorted(path.glob("**/*.bundle")):
+                    # Check if bundle should be excluded
+                    if any(str(bundle).endswith(pattern) for pattern in excluded_patterns):
+                        log.debug(f"  Skipping excluded bundle: {bundle.name}")
+                        continue
+                    bundles.append(bundle)
             elif path.suffix == ".bundle":
+                # Check if this specific bundle should be excluded
+                if any(str(path).endswith(pattern) for pattern in excluded_patterns):
+                    log.warning(f"  Skipping excluded bundle: {path.name}")
+                    continue
                 bundles.append(path)
+
         return bundles
 
     def _extract_from_bundles(self, bundles: List[Path]) -> None:
