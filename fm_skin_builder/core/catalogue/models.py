@@ -23,12 +23,9 @@ class AssetStatus(str, Enum):
 class CatalogueMetadata(BaseModel):
     """Metadata about the entire catalogue."""
 
-    catalogue_version: int = Field(
-        ..., description="Catalogue rebuild version (e.g., 2)"
-    )
     fm_version: str = Field(..., description="FM game version (e.g., '2026.4.0')")
     schema_version: str = Field(
-        default="1.0.0", description="Catalogue data format version"
+        default="2.1.0", description="Catalogue data format version"
     )
     generated_at: datetime = Field(default_factory=datetime.utcnow)
     bundles_scanned: List[str] = Field(default_factory=list)
@@ -36,9 +33,12 @@ class CatalogueMetadata(BaseModel):
         default_factory=dict,
         description="Asset counts by type: {'sprites': 2450, 'textures': 820, ...}",
     )
-    previous_fm_version: Optional[str] = None
-    previous_catalogue_version: Optional[int] = None
-    changes_since_previous: Optional[Dict[str, int]] = None
+    previous_fm_version: Optional[str] = Field(
+        None, description="Previous FM version for changelog generation"
+    )
+    changes_since_previous: Optional[Dict[str, Any]] = Field(
+        None, description="Detailed change summary from previous version"
+    )
 
 
 class CSSValueDefinition(BaseModel):
@@ -106,6 +106,17 @@ class CSSVariable(BaseModel):
         None, description="FM version modified: '2026.3.0'"
     )
 
+    # Change tracking (schema 2.1.0+) - vs previous stable version
+    change_status: Optional[str] = Field(
+        None, description="Change status: 'new', 'modified', 'unchanged'"
+    )
+    changed_in_version: Optional[str] = Field(
+        None, description="Version where this change occurred"
+    )
+    previous_values: Optional[str] = Field(
+        None, description="Previous values for modified assets"
+    )
+
 
 class CSSClass(BaseModel):
     """CSS class selector with properties."""
@@ -125,6 +136,14 @@ class CSSClass(BaseModel):
     status: AssetStatus = AssetStatus.ACTIVE
     first_seen: str
     last_seen: str
+
+    # Change tracking (schema 2.1.0+) - vs previous stable version
+    change_status: Optional[str] = Field(
+        None, description="Change status: 'new', 'modified', 'unchanged'"
+    )
+    changed_in_version: Optional[str] = Field(
+        None, description="Version where this change occurred"
+    )
 
 
 class Sprite(BaseModel):
@@ -165,6 +184,17 @@ class Sprite(BaseModel):
     first_seen: str
     last_seen: str
 
+    # Change tracking (schema 2.1.0+) - vs previous stable version
+    change_status: Optional[str] = Field(
+        None, description="Change status: 'new', 'modified', 'unchanged'"
+    )
+    changed_in_version: Optional[str] = Field(
+        None, description="Version where this change occurred"
+    )
+    previous_content_hash: Optional[str] = Field(
+        None, description="Previous content hash for modified sprites"
+    )
+
 
 class Texture(BaseModel):
     """Texture asset (backgrounds, UI textures)."""
@@ -186,6 +216,17 @@ class Texture(BaseModel):
     first_seen: str
     last_seen: str
 
+    # Change tracking (schema 2.1.0+) - vs previous stable version
+    change_status: Optional[str] = Field(
+        None, description="Change status: 'new', 'modified', 'unchanged'"
+    )
+    changed_in_version: Optional[str] = Field(
+        None, description="Version where this change occurred"
+    )
+    previous_content_hash: Optional[str] = Field(
+        None, description="Previous content hash for modified textures"
+    )
+
 
 class Font(BaseModel):
     """Font asset."""
@@ -197,3 +238,11 @@ class Font(BaseModel):
     status: AssetStatus = AssetStatus.ACTIVE
     first_seen: str
     last_seen: str
+
+    # Change tracking (schema 2.1.0+) - vs previous stable version
+    change_status: Optional[str] = Field(
+        None, description="Change status: 'new', 'modified', 'unchanged'"
+    )
+    changed_in_version: Optional[str] = Field(
+        None, description="Version where this change occurred"
+    )
