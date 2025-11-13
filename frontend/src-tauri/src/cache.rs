@@ -113,7 +113,10 @@ pub fn clear_cache(app_handle: AppHandle) -> Result<String, String> {
                 }
             }
         } else {
-            println!("[DEBUG] Folder does not exist (skipping): {:?}", folder_path);
+            println!(
+                "[DEBUG] Folder does not exist (skipping): {:?}",
+                folder_path
+            );
         }
     }
 
