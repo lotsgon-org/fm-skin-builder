@@ -895,94 +895,89 @@ class CatalogueBuilder:
 
         changes_by_type = changelog.get('changes_by_type', {})
 
-        # Process CSS Variables
-        if 'css_variables' in changes_by_type:
-            changes = changes_by_type['css_variables']
-            added_names = {c['name'] for c in changes.get('added', [])}
-            modified_data = {c['name']: c for c in changes.get('modified', [])}
+        # Process CSS Variables (note: changelog uses SINGULAR "css_variable")
+        changes = changes_by_type.get('css_variable', {})
+        added_names = {c['name'] for c in changes.get('added', [])}
+        modified_data = {c['name']: c for c in changes.get('modified', [])}
 
-            for var in self.css_variables:
-                if var.name in added_names:
-                    var.change_status = 'new'
-                    var.changed_in_version = self.fm_version
-                elif var.name in modified_data:
-                    var.change_status = 'modified'
-                    var.changed_in_version = self.fm_version
-                    mod = modified_data[var.name]
-                    if 'old_values' in mod:
-                        var.previous_values = str(mod['old_values'])
-                else:
-                    var.change_status = 'unchanged'
+        for var in self.css_variables:
+            if var.name in added_names:
+                var.change_status = 'new'
+                var.changed_in_version = self.fm_version
+            elif var.name in modified_data:
+                var.change_status = 'modified'
+                var.changed_in_version = self.fm_version
+                mod = modified_data[var.name]
+                if 'old_values' in mod:
+                    var.previous_values = str(mod['old_values'])
+            else:
+                var.change_status = 'unchanged'
 
-        # Process CSS Classes
-        if 'css_classes' in changes_by_type:
-            changes = changes_by_type['css_classes']
-            added_names = {c['name'] for c in changes.get('added', [])}
-            modified_names = {c['name'] for c in changes.get('modified', [])}
+        # Process CSS Classes (note: changelog uses SINGULAR "css_class")
+        changes = changes_by_type.get('css_class', {})
+        added_names = {c['name'] for c in changes.get('added', [])}
+        modified_names = {c['name'] for c in changes.get('modified', [])}
 
-            for cls in self.css_classes:
-                if cls.name in added_names:
-                    cls.change_status = 'new'
-                    cls.changed_in_version = self.fm_version
-                elif cls.name in modified_names:
-                    cls.change_status = 'modified'
-                    cls.changed_in_version = self.fm_version
-                else:
-                    cls.change_status = 'unchanged'
+        for cls in self.css_classes:
+            if cls.name in added_names:
+                cls.change_status = 'new'
+                cls.changed_in_version = self.fm_version
+            elif cls.name in modified_names:
+                cls.change_status = 'modified'
+                cls.changed_in_version = self.fm_version
+            else:
+                cls.change_status = 'unchanged'
 
-        # Process Sprites
-        if 'sprites' in changes_by_type:
-            changes = changes_by_type['sprites']
-            added_names = {c['name'] for c in changes.get('added', [])}
-            modified_data = {c['name']: c for c in changes.get('modified', [])}
+        # Process Sprites (note: changelog uses SINGULAR "sprite")
+        changes = changes_by_type.get('sprite', {})
+        added_names = {c['name'] for c in changes.get('added', [])}
+        modified_data = {c['name']: c for c in changes.get('modified', [])}
 
-            for sprite in self.sprites:
-                if sprite.name in added_names:
-                    sprite.change_status = 'new'
-                    sprite.changed_in_version = self.fm_version
-                elif sprite.name in modified_data:
-                    sprite.change_status = 'modified'
-                    sprite.changed_in_version = self.fm_version
-                    mod = modified_data[sprite.name]
-                    if 'old_hash' in mod:
-                        sprite.previous_content_hash = mod['old_hash']
-                else:
-                    sprite.change_status = 'unchanged'
+        for sprite in self.sprites:
+            if sprite.name in added_names:
+                sprite.change_status = 'new'
+                sprite.changed_in_version = self.fm_version
+            elif sprite.name in modified_data:
+                sprite.change_status = 'modified'
+                sprite.changed_in_version = self.fm_version
+                mod = modified_data[sprite.name]
+                if 'old_hash' in mod:
+                    sprite.previous_content_hash = mod['old_hash']
+            else:
+                sprite.change_status = 'unchanged'
 
-        # Process Textures
-        if 'textures' in changes_by_type:
-            changes = changes_by_type['textures']
-            added_names = {c['name'] for c in changes.get('added', [])}
-            modified_data = {c['name']: c for c in changes.get('modified', [])}
+        # Process Textures (note: changelog uses SINGULAR "texture")
+        changes = changes_by_type.get('texture', {})
+        added_names = {c['name'] for c in changes.get('added', [])}
+        modified_data = {c['name']: c for c in changes.get('modified', [])}
 
-            for texture in self.textures:
-                if texture.name in added_names:
-                    texture.change_status = 'new'
-                    texture.changed_in_version = self.fm_version
-                elif texture.name in modified_data:
-                    texture.change_status = 'modified'
-                    texture.changed_in_version = self.fm_version
-                    mod = modified_data[texture.name]
-                    if 'old_hash' in mod:
-                        texture.previous_content_hash = mod['old_hash']
-                else:
-                    texture.change_status = 'unchanged'
+        for texture in self.textures:
+            if texture.name in added_names:
+                texture.change_status = 'new'
+                texture.changed_in_version = self.fm_version
+            elif texture.name in modified_data:
+                texture.change_status = 'modified'
+                texture.changed_in_version = self.fm_version
+                mod = modified_data[texture.name]
+                if 'old_hash' in mod:
+                    texture.previous_content_hash = mod['old_hash']
+            else:
+                texture.change_status = 'unchanged'
 
-        # Process Fonts
-        if 'fonts' in changes_by_type:
-            changes = changes_by_type['fonts']
-            added_names = {c['name'] for c in changes.get('added', [])}
-            modified_names = {c['name'] for c in changes.get('modified', [])}
+        # Process Fonts (note: changelog uses SINGULAR "font")
+        changes = changes_by_type.get('font', {})
+        added_names = {c['name'] for c in changes.get('added', [])}
+        modified_names = {c['name'] for c in changes.get('modified', [])}
 
-            for font in self.fonts:
-                if font.name in added_names:
-                    font.change_status = 'new'
-                    font.changed_in_version = self.fm_version
-                elif font.name in modified_names:
-                    font.change_status = 'modified'
-                    font.changed_in_version = self.fm_version
-                else:
-                    font.change_status = 'unchanged'
+        for font in self.fonts:
+            if font.name in added_names:
+                font.change_status = 'new'
+                font.changed_in_version = self.fm_version
+            elif font.name in modified_names:
+                font.change_status = 'modified'
+                font.changed_in_version = self.fm_version
+            else:
+                font.change_status = 'unchanged'
 
         # Log statistics
         total_new = sum(1 for v in self.css_variables if v.change_status == 'new')
