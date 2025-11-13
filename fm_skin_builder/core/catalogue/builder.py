@@ -89,6 +89,9 @@ class CatalogueBuilder:
         self._sprite_hash_cache: Dict[str, Dict[str, Any]] = {}
         self._texture_hash_cache: Dict[str, Dict[str, Any]] = {}
 
+        # Changelog metadata (populated during changelog generation)
+        self._changelog_metadata: Optional[Dict[str, Any]] = None
+
     def build(self, bundle_paths: List[Path]) -> None:
         """
         Build complete catalogue from bundles.
@@ -114,18 +117,24 @@ class CatalogueBuilder:
         log.info("Phase 3: Deduplicating assets...")
         self._deduplicate_assets()
 
-        # Phase 4: Build search indices
-        log.info("Phase 4: Building search indices...")
+        # Phase 4: Generate changelog and apply change tracking
+        log.info("Phase 4: Generating changelog and applying change tracking...")
+        changelog = self._generate_changelog_if_needed()
+        if changelog:
+            self._apply_change_tracking(changelog)
+
+        # Phase 5: Build search indices (including change filters)
+        log.info("Phase 5: Building search indices...")
         search_index = self.search_builder.build_index(
-            self.css_variables, self.css_classes, self.sprites, self.textures
+            self.css_variables, self.css_classes, self.sprites, self.textures, self.fonts
         )
 
-        # Phase 5: Create metadata
-        log.info("Phase 5: Creating metadata...")
+        # Phase 6: Create metadata
+        log.info("Phase 6: Creating metadata...")
         metadata = self._create_metadata()
 
-        # Phase 6: Export to JSON
-        log.info("Phase 6: Exporting to JSON...")
+        # Phase 7: Export to JSON (with change_status in assets)
+        log.info("Phase 7: Exporting to JSON...")
         self.exporter.export(
             metadata,
             self.css_variables,
@@ -142,10 +151,6 @@ class CatalogueBuilder:
         log.info(f"   - {len(self.sprites)} sprites")
         log.info(f"   - {len(self.textures)} textures")
         log.info(f"   - {len(self.fonts)} fonts")
-
-        # Phase 7: Generate changelog if previous version exists
-        log.info("Phase 7: Checking for previous version...")
-        self._generate_changelog_if_needed()
 
     def _expand_bundle_paths(self, paths: List[Path]) -> List[Path]:
         """Expand directories to .bundle files."""
@@ -473,7 +478,7 @@ class CatalogueBuilder:
 
     def _create_metadata(self) -> CatalogueMetadata:
         """Create catalogue metadata."""
-        return CatalogueMetadata(
+        metadata = CatalogueMetadata(
             fm_version=self.fm_version,
             schema_version="2.1.0",
             generated_at=datetime.utcnow(),
@@ -486,6 +491,13 @@ class CatalogueBuilder:
                 "fonts": len(self.fonts),
             },
         )
+
+        # Add changelog metadata if available
+        if self._changelog_metadata:
+            metadata.previous_fm_version = self._changelog_metadata.get('previous_fm_version')
+            metadata.changes_since_previous = self._changelog_metadata.get('changes_since_previous')
+
+        return metadata
 
     def _parse_version_with_beta(self, version_str: str) -> tuple[Optional[Any], bool]:
         """
@@ -659,15 +671,20 @@ class CatalogueBuilder:
 
         return result
 
-    def _generate_changelog_if_needed(self) -> None:
-        """Generate primary and optionally secondary (beta) changelogs."""
+    def _generate_changelog_if_needed(self) -> Optional[Dict[str, Any]]:
+        """
+        Generate primary and optionally secondary (beta) changelogs.
+
+        Returns:
+            Primary changelog dictionary or None if no previous version exists
+        """
         import json
 
         targets = self._determine_comparison_targets()
 
         if not targets['primary']:
             log.info("  No previous version found - skipping changelog generation")
-            return
+            return None
 
         # Generate PRIMARY changelog (vs stable)
         try:
@@ -698,25 +715,20 @@ class CatalogueBuilder:
 
             log.info(f"  ✅ HTML report saved: {html_path}")
 
-            # Update metadata with changelog summary
-            metadata_path = self.output_dir / "metadata.json"
-            with open(metadata_path, "r", encoding="utf-8") as f:
-                metadata = json.load(f)
+            # Store changelog info for metadata (will be added during export)
+            self._changelog_metadata = {
+                "previous_fm_version": targets['primary'].name,
+                "changes_since_previous": changelog["summary"],
+                "comparison_type": targets['primary_type']
+            }
 
-            metadata["previous_fm_version"] = targets['primary'].name
-            metadata["changes_since_previous"] = changelog["summary"]
-            metadata["comparison_type"] = targets['primary_type']
-
-            with open(metadata_path, "w", encoding="utf-8") as f:
-                indent = 2 if self.pretty_json else None
-                json.dump(metadata, f, ensure_ascii=False, indent=indent)
-
-            log.info("  ✅ Metadata updated with changelog summary")
+            log.info("  ✅ Changelog info prepared for metadata")
 
         except Exception as e:
             log.error(f"  Failed to generate primary changelog: {e}")
             import traceback
             log.debug(traceback.format_exc())
+            return None
 
         # Generate SECONDARY changelog (beta → stable, if applicable)
         if targets['secondary']:
@@ -753,6 +765,128 @@ class CatalogueBuilder:
                 log.error(f"  Failed to generate beta changelog: {e}")
                 import traceback
                 log.debug(traceback.format_exc())
+
+        # Return primary changelog for change tracking
+        return changelog
+
+    def _apply_change_tracking(self, changelog: Dict[str, Any]) -> None:
+        """
+        Apply change tracking from changelog to assets.
+
+        This populates change_status, changed_in_version, and previous_* fields
+        on all assets based on the primary changelog comparison.
+
+        Args:
+            changelog: Primary changelog dictionary from version comparison
+        """
+        if not changelog:
+            return
+
+        changes_by_type = changelog.get('changes_by_type', {})
+
+        # Process CSS Variables
+        if 'css_variables' in changes_by_type:
+            changes = changes_by_type['css_variables']
+            added_names = {c['name'] for c in changes.get('added', [])}
+            modified_data = {c['name']: c for c in changes.get('modified', [])}
+
+            for var in self.css_variables:
+                if var.name in added_names:
+                    var.change_status = 'new'
+                    var.changed_in_version = self.fm_version
+                elif var.name in modified_data:
+                    var.change_status = 'modified'
+                    var.changed_in_version = self.fm_version
+                    mod = modified_data[var.name]
+                    if 'old_values' in mod:
+                        var.previous_values = str(mod['old_values'])
+                else:
+                    var.change_status = 'unchanged'
+
+        # Process CSS Classes
+        if 'css_classes' in changes_by_type:
+            changes = changes_by_type['css_classes']
+            added_names = {c['name'] for c in changes.get('added', [])}
+            modified_names = {c['name'] for c in changes.get('modified', [])}
+
+            for cls in self.css_classes:
+                if cls.name in added_names:
+                    cls.change_status = 'new'
+                    cls.changed_in_version = self.fm_version
+                elif cls.name in modified_names:
+                    cls.change_status = 'modified'
+                    cls.changed_in_version = self.fm_version
+                else:
+                    cls.change_status = 'unchanged'
+
+        # Process Sprites
+        if 'sprites' in changes_by_type:
+            changes = changes_by_type['sprites']
+            added_names = {c['name'] for c in changes.get('added', [])}
+            modified_data = {c['name']: c for c in changes.get('modified', [])}
+
+            for sprite in self.sprites:
+                if sprite.name in added_names:
+                    sprite.change_status = 'new'
+                    sprite.changed_in_version = self.fm_version
+                elif sprite.name in modified_data:
+                    sprite.change_status = 'modified'
+                    sprite.changed_in_version = self.fm_version
+                    mod = modified_data[sprite.name]
+                    if 'old_hash' in mod:
+                        sprite.previous_content_hash = mod['old_hash']
+                else:
+                    sprite.change_status = 'unchanged'
+
+        # Process Textures
+        if 'textures' in changes_by_type:
+            changes = changes_by_type['textures']
+            added_names = {c['name'] for c in changes.get('added', [])}
+            modified_data = {c['name']: c for c in changes.get('modified', [])}
+
+            for texture in self.textures:
+                if texture.name in added_names:
+                    texture.change_status = 'new'
+                    texture.changed_in_version = self.fm_version
+                elif texture.name in modified_data:
+                    texture.change_status = 'modified'
+                    texture.changed_in_version = self.fm_version
+                    mod = modified_data[texture.name]
+                    if 'old_hash' in mod:
+                        texture.previous_content_hash = mod['old_hash']
+                else:
+                    texture.change_status = 'unchanged'
+
+        # Process Fonts
+        if 'fonts' in changes_by_type:
+            changes = changes_by_type['fonts']
+            added_names = {c['name'] for c in changes.get('added', [])}
+            modified_names = {c['name'] for c in changes.get('modified', [])}
+
+            for font in self.fonts:
+                if font.name in added_names:
+                    font.change_status = 'new'
+                    font.changed_in_version = self.fm_version
+                elif font.name in modified_names:
+                    font.change_status = 'modified'
+                    font.changed_in_version = self.fm_version
+                else:
+                    font.change_status = 'unchanged'
+
+        # Log statistics
+        total_new = sum(1 for v in self.css_variables if v.change_status == 'new')
+        total_new += sum(1 for c in self.css_classes if c.change_status == 'new')
+        total_new += sum(1 for s in self.sprites if s.change_status == 'new')
+        total_new += sum(1 for t in self.textures if t.change_status == 'new')
+        total_new += sum(1 for f in self.fonts if f.change_status == 'new')
+
+        total_modified = sum(1 for v in self.css_variables if v.change_status == 'modified')
+        total_modified += sum(1 for c in self.css_classes if c.change_status == 'modified')
+        total_modified += sum(1 for s in self.sprites if s.change_status == 'modified')
+        total_modified += sum(1 for t in self.textures if t.change_status == 'modified')
+        total_modified += sum(1 for f in self.fonts if f.change_status == 'modified')
+
+        log.info(f"  ✅ Applied change tracking: {total_new} new, {total_modified} modified")
 
     def _extract_beta_changes(self, changelog: Dict[str, Any]) -> Dict[str, Any]:
         """
