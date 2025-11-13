@@ -437,8 +437,9 @@ def generate_changelog(catalogue_dir: Path, fm_version: str):
     metadata = load_json(metadata_path)
     metadata["previous_fm_version"] = prev_dir.name
     metadata["changes_since_previous"] = changelog["summary"]
+    metadata["schema_version"] = "2.1.0"  # Ensure schema is updated even if partials had 2.0.0
     save_json(metadata, metadata_path)
-    print("  ✅ Updated metadata")
+    print("  ✅ Updated metadata (schema_version set to 2.1.0)")
 
     print(f"\n✅ Changelog generation complete!")
 
