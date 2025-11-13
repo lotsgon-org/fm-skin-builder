@@ -10,14 +10,14 @@ import os
 import logging
 from pathlib import Path
 from typing import Optional
-import json
 
 log = logging.getLogger(__name__)
 
 # Try to import boto3 for R2 access
 try:
     import boto3
-    from botocore.exceptions import ClientError, NoCredentialsError
+    from botocore.exceptions import ClientError
+
     BOTO3_AVAILABLE = True
 except ImportError:
     BOTO3_AVAILABLE = False

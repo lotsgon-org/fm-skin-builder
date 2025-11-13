@@ -7,7 +7,7 @@ tracking additions, removals, and modifications across all asset types.
 
 from __future__ import annotations
 from pathlib import Path
-from typing import Dict, List, Any, Set, Optional, Tuple
+from typing import Dict, List, Any, Optional
 import json
 from datetime import datetime
 
@@ -100,7 +100,9 @@ class VersionDiffer:
         self.old_css_variables = self._load_json(
             self.old_version_dir / "css-variables.json"
         )
-        self.old_css_classes = self._load_json(self.old_version_dir / "css-classes.json")
+        self.old_css_classes = self._load_json(
+            self.old_version_dir / "css-classes.json"
+        )
         self.old_sprites = self._load_json(self.old_version_dir / "sprites.json")
         self.old_textures = self._load_json(self.old_version_dir / "textures.json")
         self.old_fonts = self._load_json(self.old_version_dir / "fonts.json")
@@ -112,7 +114,9 @@ class VersionDiffer:
         self.new_css_variables = self._load_json(
             self.new_version_dir / "css-variables.json"
         )
-        self.new_css_classes = self._load_json(self.new_version_dir / "css-classes.json")
+        self.new_css_classes = self._load_json(
+            self.new_version_dir / "css-classes.json"
+        )
         self.new_sprites = self._load_json(self.new_version_dir / "sprites.json")
         self.new_textures = self._load_json(self.new_version_dir / "textures.json")
         self.new_fonts = self._load_json(self.new_version_dir / "fonts.json")
@@ -135,9 +139,13 @@ class VersionDiffer:
         elif schema_version.startswith("2.0"):
             log.info(f"  {label.capitalize()} catalogue schema: {schema_version}")
         elif schema_version.startswith("2.1"):
-            log.info(f"  {label.capitalize()} catalogue schema: {schema_version} (with change tracking)")
+            log.info(
+                f"  {label.capitalize()} catalogue schema: {schema_version} (with change tracking)"
+            )
         else:
-            log.warning(f"  {label.capitalize()} catalogue has unknown schema: {schema_version}")
+            log.warning(
+                f"  {label.capitalize()} catalogue has unknown schema: {schema_version}"
+            )
 
     def _load_json(self, path: Path) -> Any:
         """Load JSON file."""
@@ -251,7 +259,9 @@ class VersionDiffer:
                     )
                 )
 
-        log.info(f"    Added: {len(added)}, Removed: {len(removed)}, Modified: {len([c for c in self.changes if c.asset_type == 'css_variable' and c.change_type == 'modified'])}")
+        log.info(
+            f"    Added: {len(added)}, Removed: {len(removed)}, Modified: {len([c for c in self.changes if c.asset_type == 'css_variable' and c.change_type == 'modified'])}"
+        )
 
     def _compare_css_classes(self) -> None:
         """Compare CSS classes between versions."""
@@ -329,7 +339,9 @@ class VersionDiffer:
                     )
                 )
 
-        log.info(f"    Added: {len(added)}, Removed: {len(removed)}, Modified: {len([c for c in self.changes if c.asset_type == 'css_class' and c.change_type == 'modified'])}")
+        log.info(
+            f"    Added: {len(added)}, Removed: {len(removed)}, Modified: {len([c for c in self.changes if c.asset_type == 'css_class' and c.change_type == 'modified'])}"
+        )
 
     def _compare_sprites(self) -> None:
         """Compare sprites between versions."""
@@ -410,7 +422,9 @@ class VersionDiffer:
                     )
                 )
 
-        log.info(f"    Added: {len(added)}, Removed: {len(removed)}, Modified: {len([c for c in self.changes if c.asset_type == 'sprite' and c.change_type == 'modified'])}")
+        log.info(
+            f"    Added: {len(added)}, Removed: {len(removed)}, Modified: {len([c for c in self.changes if c.asset_type == 'sprite' and c.change_type == 'modified'])}"
+        )
 
     def _compare_textures(self) -> None:
         """Compare textures between versions."""
@@ -492,7 +506,9 @@ class VersionDiffer:
                     )
                 )
 
-        log.info(f"    Added: {len(added)}, Removed: {len(removed)}, Modified: {len([c for c in self.changes if c.asset_type == 'texture' and c.change_type == 'modified'])}")
+        log.info(
+            f"    Added: {len(added)}, Removed: {len(removed)}, Modified: {len([c for c in self.changes if c.asset_type == 'texture' and c.change_type == 'modified'])}"
+        )
 
     def _compare_fonts(self) -> None:
         """Compare fonts between versions."""
@@ -603,12 +619,8 @@ class VersionDiffer:
             changes = [c for c in self.changes if c.asset_type == asset_type]
 
             changelog["changes_by_type"][asset_type] = {
-                "added": [
-                    c.to_dict() for c in changes if c.change_type == "added"
-                ],
-                "removed": [
-                    c.to_dict() for c in changes if c.change_type == "removed"
-                ],
+                "added": [c.to_dict() for c in changes if c.change_type == "added"],
+                "removed": [c.to_dict() for c in changes if c.change_type == "removed"],
                 "modified": [
                     c.to_dict() for c in changes if c.change_type == "modified"
                 ],
@@ -629,7 +641,9 @@ class VersionDiffer:
                 }
 
             asset_key = (
-                "css_variables" if change.asset_type == "css_variable" else "css_classes"
+                "css_variables"
+                if change.asset_type == "css_variable"
+                else "css_classes"
             )
             stylesheet_breakdown[stylesheet][asset_key][change.change_type].append(
                 change.to_dict()

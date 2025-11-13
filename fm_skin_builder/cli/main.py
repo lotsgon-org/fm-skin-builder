@@ -191,6 +191,7 @@ def main() -> None:
         cmd_catalogue.run(args)
     elif args.command == "catalogue-diff":
         from .commands import catalogue_diff as cmd_catalogue_diff
+
         cmd_catalogue_diff.run(args)
 
     # Mitigate rare CPython finalization crash observed with C extensions (e.g., compression libs)

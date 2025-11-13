@@ -28,6 +28,8 @@ from .exporter import CatalogueExporter
 from .version_differ import VersionDiffer
 from ..logger import get_logger
 
+log = get_logger(__name__)
+
 try:
     from packaging.version import Version, InvalidVersion
 except ImportError:
@@ -35,9 +37,6 @@ except ImportError:
     log.warning("packaging library not found - version comparison may be inaccurate")
     Version = None
     InvalidVersion = Exception
-
-
-log = get_logger(__name__)
 
 
 class CatalogueBuilder:
@@ -135,7 +134,11 @@ class CatalogueBuilder:
         # Phase 5: Build search indices (including change filters)
         log.info("Phase 5: Building search indices...")
         search_index = self.search_builder.build_index(
-            self.css_variables, self.css_classes, self.sprites, self.textures, self.fonts
+            self.css_variables,
+            self.css_classes,
+            self.sprites,
+            self.textures,
+            self.fonts,
         )
 
         # Phase 6: Create metadata
@@ -172,18 +175,20 @@ class CatalogueBuilder:
         """
         bundles = []
         excluded_patterns = [
-            '_modified.bundle',
-            '.bak',
-            '.bundle.bak',
-            '_temp.bundle',
-            '.tmp',
+            "_modified.bundle",
+            ".bak",
+            ".bundle.bak",
+            "_temp.bundle",
+            ".tmp",
         ]
 
         for path in paths:
             if path.is_dir():
                 for bundle in sorted(path.glob("**/*.bundle")):
                     # Check if bundle should be excluded
-                    if any(str(bundle).endswith(pattern) for pattern in excluded_patterns):
+                    if any(
+                        str(bundle).endswith(pattern) for pattern in excluded_patterns
+                    ):
                         log.debug(f"  Skipping excluded bundle: {bundle.name}")
                         continue
                     bundles.append(bundle)
@@ -528,8 +533,12 @@ class CatalogueBuilder:
 
         # Add changelog metadata if available
         if self._changelog_metadata:
-            metadata.previous_fm_version = self._changelog_metadata.get('previous_fm_version')
-            metadata.changes_since_previous = self._changelog_metadata.get('changes_since_previous')
+            metadata.previous_fm_version = self._changelog_metadata.get(
+                "previous_fm_version"
+            )
+            metadata.changes_since_previous = self._changelog_metadata.get(
+                "changes_since_previous"
+            )
 
         return metadata
 
@@ -554,18 +563,18 @@ class CatalogueBuilder:
 
         # Strip old -v1, -v2 suffixes from old format
         clean_version = version_str
-        if '-v' in version_str:
-            parts = version_str.split('-v')
+        if "-v" in version_str:
+            parts = version_str.split("-v")
             if len(parts) == 2 and parts[1].isdigit():
                 # Old format like 2026.0.4-v1
                 clean_version = parts[0]
 
         # Detect beta
-        is_beta = '-beta' in clean_version
+        is_beta = "-beta" in clean_version
 
         # Convert to packaging.version format (2026.0.5-beta → 2026.0.5b0)
         if is_beta:
-            clean_version = clean_version.replace('-beta', 'b0')
+            clean_version = clean_version.replace("-beta", "b0")
 
         try:
             return Version(clean_version), is_beta
@@ -583,7 +592,9 @@ class CatalogueBuilder:
         if not self.base_output_dir.exists():
             return None
 
-        current_version, is_current_beta = self._parse_version_with_beta(self.fm_version)
+        current_version, is_current_beta = self._parse_version_with_beta(
+            self.fm_version
+        )
         if not current_version:
             # Fallback to simple string comparison
             return self._find_previous_version_fallback()
@@ -621,7 +632,9 @@ class CatalogueBuilder:
         Returns:
             Path to matching beta directory, or None if not found
         """
-        current_version, is_current_beta = self._parse_version_with_beta(self.fm_version)
+        current_version, is_current_beta = self._parse_version_with_beta(
+            self.fm_version
+        )
 
         if is_current_beta or not current_version:
             # Current is beta or unparseable
@@ -674,19 +687,25 @@ class CatalogueBuilder:
 
         try:
             downloader = R2Downloader(
-                endpoint_url=self.r2_config['endpoint'],
-                bucket=self.r2_config['bucket'],
-                access_key=self.r2_config.get('access_key'),
-                secret_key=self.r2_config.get('secret_key'),
+                endpoint_url=self.r2_config["endpoint"],
+                bucket=self.r2_config["bucket"],
+                access_key=self.r2_config.get("access_key"),
+                secret_key=self.r2_config.get("secret_key"),
             )
 
-            base_path = self.r2_config.get('base_path', '')
+            base_path = self.r2_config.get("base_path", "")
 
             # Determine which versions we might need
-            current_version, is_current_beta = self._parse_version_with_beta(self.fm_version)
+            current_version, is_current_beta = self._parse_version_with_beta(
+                self.fm_version
+            )
 
             # List local versions
-            local_versions = [d.name for d in self.base_output_dir.iterdir() if d.is_dir() and d.name != self.fm_version]
+            local_versions = [
+                d.name
+                for d in self.base_output_dir.iterdir()
+                if d.is_dir() and d.name != self.fm_version
+            ]
 
             # Check if we need to download previous stable
             if self.previous_version_override:
@@ -709,9 +728,14 @@ class CatalogueBuilder:
             # Download needed versions
             for version in versions_to_check:
                 version_dir = self.base_output_dir / version
-                if not version_dir.exists() or not (version_dir / "metadata.json").exists():
+                if (
+                    not version_dir.exists()
+                    or not (version_dir / "metadata.json").exists()
+                ):
                     log.info(f"  Attempting to download version {version} from R2...")
-                    if downloader.download_version(version, self.base_output_dir, base_path):
+                    if downloader.download_version(
+                        version, self.base_output_dir, base_path
+                    ):
                         log.info(f"  ✅ Successfully downloaded {version} from R2")
                     else:
                         log.warning(f"  ⚠️  Could not download {version} from R2")
@@ -731,45 +755,51 @@ class CatalogueBuilder:
                 'primary_type': 'stable-to-stable' or 'stable-to-beta'
                 'secondary_type': 'beta-to-stable' or None
         """
-        current_version, is_current_beta = self._parse_version_with_beta(self.fm_version)
+        current_version, is_current_beta = self._parse_version_with_beta(
+            self.fm_version
+        )
 
         result = {
-            'primary': None,
-            'secondary': None,
-            'primary_type': None,
-            'secondary_type': None
+            "primary": None,
+            "secondary": None,
+            "primary_type": None,
+            "secondary_type": None,
         }
 
         # Check for override first
         if self.previous_version_override:
             override_path = self.base_output_dir / self.previous_version_override
             if override_path.exists() and (override_path / "metadata.json").exists():
-                log.info(f"  Using override previous version: {self.previous_version_override}")
-                result['primary'] = override_path
-                result['primary_type'] = 'manual-override'
+                log.info(
+                    f"  Using override previous version: {self.previous_version_override}"
+                )
+                result["primary"] = override_path
+                result["primary_type"] = "manual-override"
                 return result
             else:
-                log.warning(f"  Override version not found: {self.previous_version_override}")
-                log.warning(f"  Falling back to auto-detection")
+                log.warning(
+                    f"  Override version not found: {self.previous_version_override}"
+                )
+                log.warning("  Falling back to auto-detection")
 
         # Find previous stable version
         prev_stable = self._find_previous_stable()
 
         if is_current_beta:
             # Building beta: compare to previous stable
-            result['primary'] = prev_stable
-            result['primary_type'] = 'stable-to-beta'
+            result["primary"] = prev_stable
+            result["primary_type"] = "stable-to-beta"
 
         else:
             # Building stable: compare to previous stable (PRIMARY)
-            result['primary'] = prev_stable
-            result['primary_type'] = 'stable-to-stable'
+            result["primary"] = prev_stable
+            result["primary_type"] = "stable-to-stable"
 
             # Also compare to beta (SECONDARY)
             matching_beta = self._find_matching_beta()
             if matching_beta:
-                result['secondary'] = matching_beta
-                result['secondary_type'] = 'beta-to-stable'
+                result["secondary"] = matching_beta
+                result["secondary_type"] = "beta-to-stable"
 
         return result
 
@@ -788,12 +818,12 @@ class CatalogueBuilder:
             return None
 
         # Try to download previous version from R2 if configured
-        if self.r2_config.get('endpoint') and self.r2_config.get('bucket'):
+        if self.r2_config.get("endpoint") and self.r2_config.get("bucket"):
             self._try_download_previous_from_r2()
 
         targets = self._determine_comparison_targets()
 
-        if not targets['primary']:
+        if not targets["primary"]:
             log.info("  No previous version found - skipping changelog generation")
             return None
 
@@ -803,12 +833,12 @@ class CatalogueBuilder:
                 f"  Generating PRIMARY changelog: {targets['primary'].name} → {self.fm_version} ({targets['primary_type']})"
             )
 
-            differ = VersionDiffer(targets['primary'], self.output_dir)
+            differ = VersionDiffer(targets["primary"], self.output_dir)
             differ.load_catalogues()
             changelog = differ.compare()
 
             # Add comparison type to changelog
-            changelog['comparison_type'] = targets['primary_type']
+            changelog["comparison_type"] = targets["primary_type"]
 
             # Save primary changelog
             changelog_path = self.output_dir / "changelog-summary.json"
@@ -828,9 +858,9 @@ class CatalogueBuilder:
 
             # Store changelog info for metadata (will be added during export)
             self._changelog_metadata = {
-                "previous_fm_version": targets['primary'].name,
+                "previous_fm_version": targets["primary"].name,
                 "changes_since_previous": changelog["summary"],
-                "comparison_type": targets['primary_type']
+                "comparison_type": targets["primary_type"],
             }
 
             log.info("  ✅ Changelog info prepared for metadata")
@@ -838,22 +868,23 @@ class CatalogueBuilder:
         except Exception as e:
             log.error(f"  Failed to generate primary changelog: {e}")
             import traceback
+
             log.debug(traceback.format_exc())
             return None
 
         # Generate SECONDARY changelog (beta → stable, if applicable)
-        if targets['secondary']:
+        if targets["secondary"]:
             try:
                 log.info(
                     f"  Generating SECONDARY changelog: {targets['secondary'].name} → {self.fm_version} ({targets['secondary_type']})"
                 )
 
-                beta_differ = VersionDiffer(targets['secondary'], self.output_dir)
+                beta_differ = VersionDiffer(targets["secondary"], self.output_dir)
                 beta_differ.load_catalogues()
                 beta_changelog = beta_differ.compare()
 
                 # Add comparison type
-                beta_changelog['comparison_type'] = targets['secondary_type']
+                beta_changelog["comparison_type"] = targets["secondary_type"]
 
                 # Save beta changelog
                 beta_changelog_path = self.output_dir / "beta-changelog-summary.json"
@@ -875,6 +906,7 @@ class CatalogueBuilder:
             except Exception as e:
                 log.error(f"  Failed to generate beta changelog: {e}")
                 import traceback
+
                 log.debug(traceback.format_exc())
 
         # Return primary changelog for change tracking
@@ -893,106 +925,112 @@ class CatalogueBuilder:
         if not changelog:
             return
 
-        changes_by_type = changelog.get('changes_by_type', {})
+        changes_by_type = changelog.get("changes_by_type", {})
 
         # Process CSS Variables (note: changelog uses SINGULAR "css_variable")
-        changes = changes_by_type.get('css_variable', {})
-        added_names = {c['name'] for c in changes.get('added', [])}
-        modified_data = {c['name']: c for c in changes.get('modified', [])}
+        changes = changes_by_type.get("css_variable", {})
+        added_names = {c["name"] for c in changes.get("added", [])}
+        modified_data = {c["name"]: c for c in changes.get("modified", [])}
 
         for var in self.css_variables:
             if var.name in added_names:
-                var.change_status = 'new'
+                var.change_status = "new"
                 var.changed_in_version = self.fm_version
             elif var.name in modified_data:
-                var.change_status = 'modified'
+                var.change_status = "modified"
                 var.changed_in_version = self.fm_version
                 mod = modified_data[var.name]
-                if 'old_values' in mod:
-                    var.previous_values = str(mod['old_values'])
+                if "old_values" in mod:
+                    var.previous_values = str(mod["old_values"])
             else:
-                var.change_status = 'unchanged'
+                var.change_status = "unchanged"
 
         # Process CSS Classes (note: changelog uses SINGULAR "css_class")
-        changes = changes_by_type.get('css_class', {})
-        added_names = {c['name'] for c in changes.get('added', [])}
-        modified_names = {c['name'] for c in changes.get('modified', [])}
+        changes = changes_by_type.get("css_class", {})
+        added_names = {c["name"] for c in changes.get("added", [])}
+        modified_names = {c["name"] for c in changes.get("modified", [])}
 
         for cls in self.css_classes:
             if cls.name in added_names:
-                cls.change_status = 'new'
+                cls.change_status = "new"
                 cls.changed_in_version = self.fm_version
             elif cls.name in modified_names:
-                cls.change_status = 'modified'
+                cls.change_status = "modified"
                 cls.changed_in_version = self.fm_version
             else:
-                cls.change_status = 'unchanged'
+                cls.change_status = "unchanged"
 
         # Process Sprites (note: changelog uses SINGULAR "sprite")
-        changes = changes_by_type.get('sprite', {})
-        added_names = {c['name'] for c in changes.get('added', [])}
-        modified_data = {c['name']: c for c in changes.get('modified', [])}
+        changes = changes_by_type.get("sprite", {})
+        added_names = {c["name"] for c in changes.get("added", [])}
+        modified_data = {c["name"]: c for c in changes.get("modified", [])}
 
         for sprite in self.sprites:
             if sprite.name in added_names:
-                sprite.change_status = 'new'
+                sprite.change_status = "new"
                 sprite.changed_in_version = self.fm_version
             elif sprite.name in modified_data:
-                sprite.change_status = 'modified'
+                sprite.change_status = "modified"
                 sprite.changed_in_version = self.fm_version
                 mod = modified_data[sprite.name]
-                if 'old_hash' in mod:
-                    sprite.previous_content_hash = mod['old_hash']
+                if "old_hash" in mod:
+                    sprite.previous_content_hash = mod["old_hash"]
             else:
-                sprite.change_status = 'unchanged'
+                sprite.change_status = "unchanged"
 
         # Process Textures (note: changelog uses SINGULAR "texture")
-        changes = changes_by_type.get('texture', {})
-        added_names = {c['name'] for c in changes.get('added', [])}
-        modified_data = {c['name']: c for c in changes.get('modified', [])}
+        changes = changes_by_type.get("texture", {})
+        added_names = {c["name"] for c in changes.get("added", [])}
+        modified_data = {c["name"]: c for c in changes.get("modified", [])}
 
         for texture in self.textures:
             if texture.name in added_names:
-                texture.change_status = 'new'
+                texture.change_status = "new"
                 texture.changed_in_version = self.fm_version
             elif texture.name in modified_data:
-                texture.change_status = 'modified'
+                texture.change_status = "modified"
                 texture.changed_in_version = self.fm_version
                 mod = modified_data[texture.name]
-                if 'old_hash' in mod:
-                    texture.previous_content_hash = mod['old_hash']
+                if "old_hash" in mod:
+                    texture.previous_content_hash = mod["old_hash"]
             else:
-                texture.change_status = 'unchanged'
+                texture.change_status = "unchanged"
 
         # Process Fonts (note: changelog uses SINGULAR "font")
-        changes = changes_by_type.get('font', {})
-        added_names = {c['name'] for c in changes.get('added', [])}
-        modified_names = {c['name'] for c in changes.get('modified', [])}
+        changes = changes_by_type.get("font", {})
+        added_names = {c["name"] for c in changes.get("added", [])}
+        modified_names = {c["name"] for c in changes.get("modified", [])}
 
         for font in self.fonts:
             if font.name in added_names:
-                font.change_status = 'new'
+                font.change_status = "new"
                 font.changed_in_version = self.fm_version
             elif font.name in modified_names:
-                font.change_status = 'modified'
+                font.change_status = "modified"
                 font.changed_in_version = self.fm_version
             else:
-                font.change_status = 'unchanged'
+                font.change_status = "unchanged"
 
         # Log statistics
-        total_new = sum(1 for v in self.css_variables if v.change_status == 'new')
-        total_new += sum(1 for c in self.css_classes if c.change_status == 'new')
-        total_new += sum(1 for s in self.sprites if s.change_status == 'new')
-        total_new += sum(1 for t in self.textures if t.change_status == 'new')
-        total_new += sum(1 for f in self.fonts if f.change_status == 'new')
+        total_new = sum(1 for v in self.css_variables if v.change_status == "new")
+        total_new += sum(1 for c in self.css_classes if c.change_status == "new")
+        total_new += sum(1 for s in self.sprites if s.change_status == "new")
+        total_new += sum(1 for t in self.textures if t.change_status == "new")
+        total_new += sum(1 for f in self.fonts if f.change_status == "new")
 
-        total_modified = sum(1 for v in self.css_variables if v.change_status == 'modified')
-        total_modified += sum(1 for c in self.css_classes if c.change_status == 'modified')
-        total_modified += sum(1 for s in self.sprites if s.change_status == 'modified')
-        total_modified += sum(1 for t in self.textures if t.change_status == 'modified')
-        total_modified += sum(1 for f in self.fonts if f.change_status == 'modified')
+        total_modified = sum(
+            1 for v in self.css_variables if v.change_status == "modified"
+        )
+        total_modified += sum(
+            1 for c in self.css_classes if c.change_status == "modified"
+        )
+        total_modified += sum(1 for s in self.sprites if s.change_status == "modified")
+        total_modified += sum(1 for t in self.textures if t.change_status == "modified")
+        total_modified += sum(1 for f in self.fonts if f.change_status == "modified")
 
-        log.info(f"  ✅ Applied change tracking: {total_new} new, {total_modified} modified")
+        log.info(
+            f"  ✅ Applied change tracking: {total_new} new, {total_modified} modified"
+        )
 
     def _extract_beta_changes(self, changelog: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -1008,25 +1046,31 @@ class CatalogueBuilder:
 
         # Map plural output keys to singular changelog keys
         key_mapping = {
-            'sprites': 'sprite',
-            'textures': 'texture',
-            'css_variables': 'css_variable',
-            'css_classes': 'css_class',
-            'fonts': 'font'
+            "sprites": "sprite",
+            "textures": "texture",
+            "css_variables": "css_variable",
+            "css_classes": "css_class",
+            "fonts": "font",
         }
 
-        for asset_type in ['sprites', 'textures', 'css_variables', 'css_classes', 'fonts']:
+        for asset_type in [
+            "sprites",
+            "textures",
+            "css_variables",
+            "css_classes",
+            "fonts",
+        ]:
             # Use singular key to check changelog (generated by version_differ.py)
             changelog_key = key_mapping[asset_type]
 
-            if changelog_key in changelog.get('changes_by_type', {}):
-                type_changes = changelog['changes_by_type'][changelog_key]
+            if changelog_key in changelog.get("changes_by_type", {}):
+                type_changes = changelog["changes_by_type"][changelog_key]
 
                 # Output uses plural key for website consumption
                 beta_changes[asset_type] = {
-                    'new': [c['name'] for c in type_changes.get('added', [])],
-                    'modified': [c['name'] for c in type_changes.get('modified', [])],
-                    'removed': [c['name'] for c in type_changes.get('removed', [])]
+                    "new": [c["name"] for c in type_changes.get("added", [])],
+                    "modified": [c["name"] for c in type_changes.get("modified", [])],
+                    "removed": [c["name"] for c in type_changes.get("removed", [])],
                 }
 
         return beta_changes

@@ -59,7 +59,7 @@ def run(args: Namespace) -> None:
     pretty = getattr(args, "pretty", False)
 
     try:
-        log.info(f"Comparing catalogues:")
+        log.info("Comparing catalogues:")
         log.info(f"  Old: {old_dir}")
         log.info(f"  New: {new_dir}")
 

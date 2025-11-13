@@ -56,9 +56,7 @@ def save_json(data: Any, file_path: Path, pretty: bool = True):
     print(f"    Written: {file_path.name} ({file_size / 1024:.1f} KB)")
 
 
-def download_previous_from_r2(
-    fm_version: str, output_base: Path
-) -> Optional[Path]:
+def download_previous_from_r2(fm_version: str, output_base: Path) -> Optional[Path]:
     """
     Try to download previous version from R2.
 
@@ -182,7 +180,7 @@ def apply_change_tracking(
         changelog: Changelog dictionary from comparison
     """
     fm_version = changelog.get("to_version", "unknown")
-    prev_version = changelog.get("from_version", "unknown")
+    # prev_version = changelog.get("from_version", "unknown")
     changes_by_type = changelog.get("changes_by_type", {})
 
     # Load current asset files
@@ -224,13 +222,17 @@ def apply_change_tracking(
             # Modified asset - preserve first_seen, update last_seen and modified_in
             var["change_status"] = "modified"
             var["changed_in_version"] = fm_version
-            var["first_seen"] = prev_var.get("first_seen", fm_version) if prev_var else fm_version
+            var["first_seen"] = (
+                prev_var.get("first_seen", fm_version) if prev_var else fm_version
+            )
             var["last_seen"] = fm_version
             var["modified_in"] = fm_version
         else:
             # Unchanged asset - preserve first_seen, update last_seen
             var["change_status"] = "unchanged"
-            var["first_seen"] = prev_var.get("first_seen", fm_version) if prev_var else fm_version
+            var["first_seen"] = (
+                prev_var.get("first_seen", fm_version) if prev_var else fm_version
+            )
             var["last_seen"] = fm_version
 
     # Apply changes to CSS classes (note: changelog uses SINGULAR "css_class")
@@ -249,12 +251,16 @@ def apply_change_tracking(
         elif cls["name"] in modified:
             cls["change_status"] = "modified"
             cls["changed_in_version"] = fm_version
-            cls["first_seen"] = prev_cls.get("first_seen", fm_version) if prev_cls else fm_version
+            cls["first_seen"] = (
+                prev_cls.get("first_seen", fm_version) if prev_cls else fm_version
+            )
             cls["last_seen"] = fm_version
             cls["modified_in"] = fm_version
         else:
             cls["change_status"] = "unchanged"
-            cls["first_seen"] = prev_cls.get("first_seen", fm_version) if prev_cls else fm_version
+            cls["first_seen"] = (
+                prev_cls.get("first_seen", fm_version) if prev_cls else fm_version
+            )
             cls["last_seen"] = fm_version
 
     # Apply changes to sprites (note: changelog uses SINGULAR "sprite")
@@ -305,7 +311,9 @@ def apply_change_tracking(
             texture["change_status"] = "modified"
             texture["changed_in_version"] = fm_version
             texture["first_seen"] = (
-                prev_texture.get("first_seen", fm_version) if prev_texture else fm_version
+                prev_texture.get("first_seen", fm_version)
+                if prev_texture
+                else fm_version
             )
             texture["last_seen"] = fm_version
             texture["modified_in"] = fm_version
@@ -315,7 +323,9 @@ def apply_change_tracking(
         else:
             texture["change_status"] = "unchanged"
             texture["first_seen"] = (
-                prev_texture.get("first_seen", fm_version) if prev_texture else fm_version
+                prev_texture.get("first_seen", fm_version)
+                if prev_texture
+                else fm_version
             )
             texture["last_seen"] = fm_version
 
@@ -335,12 +345,16 @@ def apply_change_tracking(
         elif font["name"] in modified:
             font["change_status"] = "modified"
             font["changed_in_version"] = fm_version
-            font["first_seen"] = prev_font.get("first_seen", fm_version) if prev_font else fm_version
+            font["first_seen"] = (
+                prev_font.get("first_seen", fm_version) if prev_font else fm_version
+            )
             font["last_seen"] = fm_version
             font["modified_in"] = fm_version
         else:
             font["change_status"] = "unchanged"
-            font["first_seen"] = prev_font.get("first_seen", fm_version) if prev_font else fm_version
+            font["first_seen"] = (
+                prev_font.get("first_seen", fm_version) if prev_font else fm_version
+            )
             font["last_seen"] = fm_version
 
     # Save updated files
@@ -363,14 +377,16 @@ def apply_change_tracking(
     total_modified += sum(
         1 for c in css_classes_raw if c.get("change_status") == "modified"
     )
-    total_modified += sum(1 for s in sprites_raw if s.get("change_status") == "modified")
+    total_modified += sum(
+        1 for s in sprites_raw if s.get("change_status") == "modified"
+    )
     total_modified += sum(
         1 for t in textures_raw if t.get("change_status") == "modified"
     )
     total_modified += sum(1 for f in fonts_raw if f.get("change_status") == "modified")
 
     print(f"  ✅ Applied change tracking: {total_new} new, {total_modified} modified")
-    print(f"  ✅ Updated first_seen/last_seen/modified_in metadata")
+    print("  ✅ Updated first_seen/last_seen/modified_in metadata")
 
     # Rebuild search index with change filters
     print("  Rebuilding search index with change filters...")
@@ -400,8 +416,8 @@ def apply_change_tracking(
             if status:
                 print(f"  ✅ Verified: Sample asset has change_status='{status}'")
             else:
-                print(f"  ⚠️  WARNING: Sample asset has NULL change_status!")
-                print(f"     This indicates files were written but data is wrong!")
+                print("  ⚠️  WARNING: Sample asset has NULL change_status!")
+                print("     This indicates files were written but data is wrong!")
 
 
 def generate_changelog(catalogue_dir: Path, fm_version: str):
@@ -456,11 +472,13 @@ def generate_changelog(catalogue_dir: Path, fm_version: str):
     metadata = load_json(metadata_path)
     metadata["previous_fm_version"] = prev_dir.name
     metadata["changes_since_previous"] = changelog["summary"]
-    metadata["schema_version"] = "2.1.0"  # Ensure schema is updated even if partials had 2.0.0
+    metadata["schema_version"] = (
+        "2.1.0"  # Ensure schema is updated even if partials had 2.0.0
+    )
     save_json(metadata, metadata_path)
     print("  ✅ Updated metadata (schema_version set to 2.1.0)")
 
-    print(f"\n✅ Changelog generation complete!")
+    print("\n✅ Changelog generation complete!")
 
 
 def main():

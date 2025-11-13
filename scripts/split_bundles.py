@@ -167,11 +167,11 @@ def list_and_split_bundles(
                 if key.endswith(".bundle"):
                     # Skip backup and modified bundles
                     skip_patterns = [
-                        '_modified.bundle',
-                        '.bundle.bak',
-                        '.bak',
-                        '_temp.bundle',
-                        '.tmp',
+                        "_modified.bundle",
+                        ".bundle.bak",
+                        ".bak",
+                        "_temp.bundle",
+                        ".tmp",
                     ]
                     if any(key.endswith(pattern) for pattern in skip_patterns):
                         print(f"  ⏭️  Skipping backup/modified: {key.split('/')[-1]}")
