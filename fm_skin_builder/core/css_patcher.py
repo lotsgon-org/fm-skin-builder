@@ -341,6 +341,44 @@ class CssPatcher:
         finally:
             bundle_context.dispose()
 
+    def _build_global_selector_registry(
+        self, stylesheets: List[Tuple[Any, str]]
+    ) -> Tuple[Dict[str, List[str]], Dict[str, List[str]]]:
+        """Build global registry of selectors and variables across all stylesheets.
+
+        Returns:
+            (selector_registry, variable_registry) where:
+            - selector_registry: {".green": ["FigmaStyleVariables", "OtherSheet"], ...}
+            - variable_registry: {"--primary-color": ["FigmaStyleVariables"], ...}
+        """
+        from collections import defaultdict
+
+        selector_registry: DefaultDict[str, List[str]] = defaultdict(list)
+        variable_registry: DefaultDict[str, List[str]] = defaultdict(list)
+
+        for data, name in stylesheets:
+            # Extract all selectors from complex selectors
+            complex_selectors = getattr(data, "m_ComplexSelectors", [])
+            for sel in complex_selectors:
+                if hasattr(sel, "m_Selectors") and sel.m_Selectors:
+                    for s in sel.m_Selectors:
+                        parts = getattr(s, "m_Parts", [])
+                        if parts:
+                            selector_text = build_selector_from_parts(parts)
+                            if selector_text and selector_text not in selector_registry[selector_text]:
+                                selector_registry[selector_text].append(name)
+
+            # Extract all variables from rules
+            rules = getattr(data, "m_Rules", [])
+            for rule in rules:
+                for prop in getattr(rule, "m_Properties", []):
+                    prop_name = getattr(prop, "m_Name", "")
+                    if prop_name.startswith("--"):
+                        if name not in variable_registry[prop_name]:
+                            variable_registry[prop_name].append(name)
+
+        return dict(selector_registry), dict(variable_registry)
+
     def patch_bundle(
         self,
         bundle: BundleContext,
@@ -392,6 +430,19 @@ class CssPatcher:
                     selector_overrides_for_asset,
                     has_targeted_sources,
                 )
+            )
+
+        # Build global registry of selectors and variables across all stylesheets
+        # This enables smart update mode (Option 3) to prevent cross-file duplicates
+        stylesheet_data = [(data, name) for (_, data, name, _, _, _) in original_uss]
+        self._global_selector_registry, self._global_variable_registry = (
+            self._build_global_selector_registry(stylesheet_data)
+        )
+
+        if self._global_selector_registry or self._global_variable_registry:
+            log.info(
+                f"  [GLOBAL REGISTRY] Found {len(self._global_selector_registry)} selectors "
+                f"and {len(self._global_variable_registry)} variables across {len(stylesheet_data)} stylesheets"
             )
 
         for (
@@ -1226,34 +1277,55 @@ class CssPatcher:
         unmatched_vars = set(css_vars.keys()) - matched_css_vars - existing_var_names
 
         if unmatched_vars:
-            # Smart placement: Only add new variables if:
-            # 1. This stylesheet has explicit targeting (has_targeted_sources), OR
-            # 2. This stylesheet is the primary variable stylesheet
-            name_lower = name.lower()
-            should_add_vars = has_targeted_sources or (name_lower == self.primary_variable_stylesheet)
+            # Option 3: Smart Update Mode with Global Registry
+            # Check if variables exist in other stylesheets (global registry)
+            registry = getattr(self, "_global_variable_registry", {})
+            vars_in_other_files = {
+                var: registry[var]
+                for var in unmatched_vars
+                if var in registry and name not in registry[var]
+            }
 
-            if should_add_vars:
-                reason = "explicit targeting" if has_targeted_sources else "primary variable stylesheet"
-                log.info(
-                    f"  [PHASE 3.1] Adding {len(unmatched_vars)} new CSS variables to {name} ({reason})"
-                )
-                new_vars_created = self._add_new_css_variables(
-                    data, unmatched_vars, css_vars, name
-                )
-                if new_vars_created > 0:
-                    patched_vars += new_vars_created
-                    changed = True
-                    log.info(f"  [ADDED] {new_vars_created} new CSS variables to {name}")
-            else:
-                # Skip adding new variables to this stylesheet
-                log.info(
-                    f"  [PHASE 3.1] Skipping {len(unmatched_vars)} new variables for {name} "
-                    f"(not targeted, primary is '{self.primary_variable_stylesheet}')"
-                )
-                if len(unmatched_vars) <= 5:
-                    log.info(f"    Variables: {', '.join(sorted(unmatched_vars))}")
+            # Filter out variables that exist elsewhere (they'll be updated there)
+            truly_new_vars = unmatched_vars - set(vars_in_other_files.keys())
+
+            if truly_new_vars:
+                # Smart placement: Only add new variables if:
+                # 1. This stylesheet has explicit targeting (has_targeted_sources), OR
+                # 2. This stylesheet is the primary variable stylesheet
+                name_lower = name.lower()
+                should_add_vars = has_targeted_sources or (name_lower == self.primary_variable_stylesheet)
+
+                if should_add_vars:
+                    reason = "explicit targeting" if has_targeted_sources else "primary variable stylesheet"
+                    log.info(
+                        f"  [PHASE 3.1] Adding {len(truly_new_vars)} new CSS variables to {name} ({reason})"
+                    )
+                    new_vars_created = self._add_new_css_variables(
+                        data, truly_new_vars, css_vars, name
+                    )
+                    if new_vars_created > 0:
+                        patched_vars += new_vars_created
+                        changed = True
+                        log.info(f"  [ADDED] {new_vars_created} new CSS variables to {name}")
                 else:
-                    log.info(f"    Variables: {', '.join(sorted(list(unmatched_vars)[:5]))}... (and {len(unmatched_vars) - 5} more)")
+                    # Skip adding new variables to this stylesheet
+                    log.info(
+                        f"  [PHASE 3.1] Skipping {len(truly_new_vars)} new variables for {name} "
+                        f"(not targeted, primary is '{self.primary_variable_stylesheet}')"
+                    )
+                    if len(truly_new_vars) <= 5:
+                        log.info(f"    Variables: {', '.join(sorted(truly_new_vars))}")
+                    else:
+                        log.info(f"    Variables: {', '.join(sorted(list(truly_new_vars)[:5]))}... (and {len(truly_new_vars) - 5} more)")
+
+            # Log variables that exist in other files (smart update)
+            if vars_in_other_files:
+                for var, locations in sorted(vars_in_other_files.items()):
+                    log.info(
+                        f"  [PHASE 3.1] Skipping {var} for {name} "
+                        f"(already exists in {', '.join(locations)}, will update there)"
+                    )
 
 
         # Phase 3.2: Smart new selector placement
@@ -1279,35 +1351,58 @@ class CssPatcher:
         }
 
         if truly_new_selectors:
-            # Smart placement: Only add new selectors if:
-            # 1. This stylesheet has explicit targeting (has_targeted_sources), OR
-            # 2. This stylesheet is the primary selector stylesheet
-            name_lower = name.lower()
-            should_add_selectors = has_targeted_sources or (name_lower == self.primary_selector_stylesheet)
+            # Option 3: Smart Update Mode with Global Registry
+            # Check if selectors exist in other stylesheets (global registry)
+            registry = getattr(self, "_global_selector_registry", {})
+            selectors_in_other_files = {}
+            filtered_new_selectors = set()
 
-            if should_add_selectors:
-                reason = "explicit targeting" if has_targeted_sources else "primary selector stylesheet"
-                log.info(
-                    f"  [PHASE 3.2] Adding {len(truly_new_selectors)} new selector properties to {name} ({reason})"
-                )
-                new_props_created = self._add_new_css_selectors(
-                    data, truly_new_selectors, selector_overrides, name
-                )
-                if new_props_created > 0:
-                    patched_vars += new_props_created
-                    changed = True
-                    log.info(f"  [ADDED] {new_props_created} new selector properties to {name}")
-            else:
-                # Skip adding new selectors to this stylesheet
-                selector_list = sorted(set(sel for sel, prop in truly_new_selectors))
-                log.info(
-                    f"  [PHASE 3.2] Skipping {len(truly_new_selectors)} new selector properties for {name} "
-                    f"(not targeted, primary is '{self.primary_selector_stylesheet}')"
-                )
-                if len(selector_list) <= 5:
-                    log.info(f"    Selectors: {', '.join(selector_list)}")
+            for sel, prop in truly_new_selectors:
+                if sel in registry and name not in registry[sel]:
+                    # Selector exists in other file(s), will be updated there
+                    selectors_in_other_files[sel] = registry[sel]
                 else:
-                    log.info(f"    Selectors: {', '.join(selector_list[:5])}... (and {len(selector_list) - 5} more)")
+                    # Truly new selector (doesn't exist anywhere)
+                    filtered_new_selectors.add((sel, prop))
+
+            if filtered_new_selectors:
+                # Smart placement: Only add new selectors if:
+                # 1. This stylesheet has explicit targeting (has_targeted_sources), OR
+                # 2. This stylesheet is the primary selector stylesheet
+                name_lower = name.lower()
+                should_add_selectors = has_targeted_sources or (name_lower == self.primary_selector_stylesheet)
+
+                if should_add_selectors:
+                    reason = "explicit targeting" if has_targeted_sources else "primary selector stylesheet"
+                    log.info(
+                        f"  [PHASE 3.2] Adding {len(filtered_new_selectors)} new selector properties to {name} ({reason})"
+                    )
+                    new_props_created = self._add_new_css_selectors(
+                        data, filtered_new_selectors, selector_overrides, name
+                    )
+                    if new_props_created > 0:
+                        patched_vars += new_props_created
+                        changed = True
+                        log.info(f"  [ADDED] {new_props_created} new selector properties to {name}")
+                else:
+                    # Skip adding new selectors to this stylesheet
+                    selector_list = sorted(set(sel for sel, prop in filtered_new_selectors))
+                    log.info(
+                        f"  [PHASE 3.2] Skipping {len(filtered_new_selectors)} new selector properties for {name} "
+                        f"(not targeted, primary is '{self.primary_selector_stylesheet}')"
+                    )
+                    if len(selector_list) <= 5:
+                        log.info(f"    Selectors: {', '.join(selector_list)}")
+                    else:
+                        log.info(f"    Selectors: {', '.join(selector_list[:5])}... (and {len(selector_list) - 5} more)")
+
+            # Log selectors that exist in other files (smart update)
+            if selectors_in_other_files:
+                for sel, locations in sorted(selectors_in_other_files.items()):
+                    log.info(
+                        f"  [PHASE 3.2] Skipping {sel} for {name} "
+                        f"(already exists in {', '.join(locations)}, will update there)"
+                    )
 
         if self.debug_export_dir and changed and not self.dry_run:
             # Ensure dir exists before exporting
@@ -1425,7 +1520,10 @@ class CssPatcher:
                 value_obj = copy.copy(existing_values[0])
                 # Will set m_ValueType and valueIndex below
             else:
+                # Create minimal value object with required Unity fields
                 value_obj = SimpleNamespace()
+                setattr(value_obj, "m_Line", -1)
+                setattr(value_obj, "m_Column", 0)
 
             # Detect value type and add to appropriate array
             if _is_color_property(var_name, value_str):
@@ -1586,7 +1684,10 @@ class CssPatcher:
                     import copy
                     value_obj = copy.copy(existing_value)
                 else:
+                    # Create minimal value object with required Unity fields
                     value_obj = SimpleNamespace()
+                    setattr(value_obj, "m_Line", -1)
+                    setattr(value_obj, "m_Column", 0)
 
                 # Detect value type and add to appropriate array
                 if _is_color_property(prop_name, value_str):
