@@ -162,24 +162,43 @@ def find_local_previous(fm_version: str, output_base: Path) -> Optional[Path]:
 
 
 def apply_change_tracking(
-    catalogue_dir: Path, changelog: Dict[str, Any]
+    catalogue_dir: Path, prev_catalogue_dir: Path, changelog: Dict[str, Any]
 ) -> None:
     """
     Apply change tracking from changelog to asset files.
 
+    Updates change_status, first_seen, last_seen, and modified_in fields based on
+    comparison with previous version.
+
     Args:
-        catalogue_dir: Directory containing catalogue files
+        catalogue_dir: Directory containing current catalogue files
+        prev_catalogue_dir: Directory containing previous catalogue files
         changelog: Changelog dictionary from comparison
     """
     fm_version = changelog.get("to_version", "unknown")
+    prev_version = changelog.get("from_version", "unknown")
     changes_by_type = changelog.get("changes_by_type", {})
 
-    # Load all asset files
+    # Load current asset files
     css_vars_raw = load_json(catalogue_dir / "css-variables.json")
     css_classes_raw = load_json(catalogue_dir / "css-classes.json")
     sprites_raw = load_json(catalogue_dir / "sprites.json")
     textures_raw = load_json(catalogue_dir / "textures.json")
     fonts_raw = load_json(catalogue_dir / "fonts.json")
+
+    # Load previous asset files for historical metadata
+    prev_css_vars_raw = load_json(prev_catalogue_dir / "css-variables.json")
+    prev_css_classes_raw = load_json(prev_catalogue_dir / "css-classes.json")
+    prev_sprites_raw = load_json(prev_catalogue_dir / "sprites.json")
+    prev_textures_raw = load_json(prev_catalogue_dir / "textures.json")
+    prev_fonts_raw = load_json(prev_catalogue_dir / "fonts.json")
+
+    # Build lookup maps by name
+    prev_css_vars_map = {v["name"]: v for v in prev_css_vars_raw}
+    prev_css_classes_map = {c["name"]: c for c in prev_css_classes_raw}
+    prev_sprites_map = {s["name"]: s for s in prev_sprites_raw}
+    prev_textures_map = {t["name"]: t for t in prev_textures_raw}
+    prev_fonts_map = {f["name"]: f for f in prev_fonts_raw}
 
     # Apply changes to CSS variables
     if "css_variables" in changes_by_type:
@@ -188,14 +207,26 @@ def apply_change_tracking(
         modified = {c["name"]: c for c in changes.get("modified", [])}
 
         for var in css_vars_raw:
+            prev_var = prev_css_vars_map.get(var["name"])
+
             if var["name"] in added:
+                # New asset - set first_seen to current version
                 var["change_status"] = "new"
                 var["changed_in_version"] = fm_version
+                var["first_seen"] = fm_version
+                var["last_seen"] = fm_version
             elif var["name"] in modified:
+                # Modified asset - preserve first_seen, update last_seen and modified_in
                 var["change_status"] = "modified"
                 var["changed_in_version"] = fm_version
+                var["first_seen"] = prev_var["first_seen"] if prev_var else fm_version
+                var["last_seen"] = fm_version
+                var["modified_in"] = fm_version
             else:
+                # Unchanged asset - preserve first_seen, update last_seen
                 var["change_status"] = "unchanged"
+                var["first_seen"] = prev_var["first_seen"] if prev_var else fm_version
+                var["last_seen"] = fm_version
 
     # Apply changes to CSS classes
     if "css_classes" in changes_by_type:
@@ -204,14 +235,23 @@ def apply_change_tracking(
         modified = {c["name"] for c in changes.get("modified", [])}
 
         for cls in css_classes_raw:
+            prev_cls = prev_css_classes_map.get(cls["name"])
+
             if cls["name"] in added:
                 cls["change_status"] = "new"
                 cls["changed_in_version"] = fm_version
+                cls["first_seen"] = fm_version
+                cls["last_seen"] = fm_version
             elif cls["name"] in modified:
                 cls["change_status"] = "modified"
                 cls["changed_in_version"] = fm_version
+                cls["first_seen"] = prev_cls["first_seen"] if prev_cls else fm_version
+                cls["last_seen"] = fm_version
+                cls["modified_in"] = fm_version
             else:
                 cls["change_status"] = "unchanged"
+                cls["first_seen"] = prev_cls["first_seen"] if prev_cls else fm_version
+                cls["last_seen"] = fm_version
 
     # Apply changes to sprites
     if "sprites" in changes_by_type:
@@ -220,17 +260,30 @@ def apply_change_tracking(
         modified = {c["name"]: c for c in changes.get("modified", [])}
 
         for sprite in sprites_raw:
+            prev_sprite = prev_sprites_map.get(sprite["name"])
+
             if sprite["name"] in added:
                 sprite["change_status"] = "new"
                 sprite["changed_in_version"] = fm_version
+                sprite["first_seen"] = fm_version
+                sprite["last_seen"] = fm_version
             elif sprite["name"] in modified:
                 sprite["change_status"] = "modified"
                 sprite["changed_in_version"] = fm_version
+                sprite["first_seen"] = (
+                    prev_sprite["first_seen"] if prev_sprite else fm_version
+                )
+                sprite["last_seen"] = fm_version
+                sprite["modified_in"] = fm_version
                 mod = modified[sprite["name"]]
                 if "old_hash" in mod:
                     sprite["previous_content_hash"] = mod["old_hash"]
             else:
                 sprite["change_status"] = "unchanged"
+                sprite["first_seen"] = (
+                    prev_sprite["first_seen"] if prev_sprite else fm_version
+                )
+                sprite["last_seen"] = fm_version
 
     # Apply changes to textures
     if "textures" in changes_by_type:
@@ -239,17 +292,30 @@ def apply_change_tracking(
         modified = {c["name"]: c for c in changes.get("modified", [])}
 
         for texture in textures_raw:
+            prev_texture = prev_textures_map.get(texture["name"])
+
             if texture["name"] in added:
                 texture["change_status"] = "new"
                 texture["changed_in_version"] = fm_version
+                texture["first_seen"] = fm_version
+                texture["last_seen"] = fm_version
             elif texture["name"] in modified:
                 texture["change_status"] = "modified"
                 texture["changed_in_version"] = fm_version
+                texture["first_seen"] = (
+                    prev_texture["first_seen"] if prev_texture else fm_version
+                )
+                texture["last_seen"] = fm_version
+                texture["modified_in"] = fm_version
                 mod = modified[texture["name"]]
                 if "old_hash" in mod:
                     texture["previous_content_hash"] = mod["old_hash"]
             else:
                 texture["change_status"] = "unchanged"
+                texture["first_seen"] = (
+                    prev_texture["first_seen"] if prev_texture else fm_version
+                )
+                texture["last_seen"] = fm_version
 
     # Apply changes to fonts
     if "fonts" in changes_by_type:
@@ -258,14 +324,23 @@ def apply_change_tracking(
         modified = {c["name"] for c in changes.get("modified", [])}
 
         for font in fonts_raw:
+            prev_font = prev_fonts_map.get(font["name"])
+
             if font["name"] in added:
                 font["change_status"] = "new"
                 font["changed_in_version"] = fm_version
+                font["first_seen"] = fm_version
+                font["last_seen"] = fm_version
             elif font["name"] in modified:
                 font["change_status"] = "modified"
                 font["changed_in_version"] = fm_version
+                font["first_seen"] = prev_font["first_seen"] if prev_font else fm_version
+                font["last_seen"] = fm_version
+                font["modified_in"] = fm_version
             else:
                 font["change_status"] = "unchanged"
+                font["first_seen"] = prev_font["first_seen"] if prev_font else fm_version
+                font["last_seen"] = fm_version
 
     # Save updated files
     save_json(css_vars_raw, catalogue_dir / "css-variables.json")
@@ -294,6 +369,7 @@ def apply_change_tracking(
     total_modified += sum(1 for f in fonts_raw if f.get("change_status") == "modified")
 
     print(f"  ✅ Applied change tracking: {total_new} new, {total_modified} modified")
+    print(f"  ✅ Updated first_seen/last_seen/modified_in metadata")
 
     # Rebuild search index with change filters
     print("  Rebuilding search index with change filters...")
@@ -359,7 +435,7 @@ def generate_changelog(catalogue_dir: Path, fm_version: str):
 
     # Apply change tracking to assets
     print("\n🔄 Applying change tracking to assets...")
-    apply_change_tracking(catalogue_dir, changelog)
+    apply_change_tracking(catalogue_dir, prev_dir, changelog)
 
     # Update metadata
     metadata_path = catalogue_dir / "metadata.json"
