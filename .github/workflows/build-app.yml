@@ -166,6 +166,7 @@ jobs:
             --collect-all UnityPy \
             --collect-all cairosvg \
             --collect-all svg.path \
+            --collect-all fonttools \
             --additional-hooks-dir=hooks \
             --runtime-hook=hooks/rthook_cairocffi.py \
             fm_skin_builder/__main__.py

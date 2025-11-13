@@ -23,12 +23,26 @@ from .services import (
     CssPatchService,
     TextureSwapOptions,
     TextureSwapService,
+    FontSwapOptions,
+    FontSwapService,
 )
 from .css_utils import (
     build_selector_from_parts,
     clean_for_json,
     hex_to_rgba,
     serialize_stylesheet_to_uss,
+    normalize_css_color,
+)
+from .value_parsers import (
+    parse_css_value,
+    parse_float_value,
+    parse_keyword_value,
+    parse_resource_value,
+    CssValueType,
+)
+from .property_handlers import (
+    get_property_handler,
+    PROPERTY_TYPE_MAP,
 )
 from .texture_utils import (
     collect_replacement_stems,
@@ -74,6 +88,196 @@ def _build_unity_color(
     color = SimpleNamespace()
     color.r, color.g, color.b, color.a = r, g, b, a
     return color
+
+
+def _is_color_property(prop_name: str, value: Any) -> bool:
+    """Check if a property should be treated as a color."""
+    # Check if it's a color value (hex string)
+    if isinstance(value, str):
+        return normalize_css_color(value) is not None
+    return False
+
+
+def _patch_float_property(
+    data: Any,
+    prop: Any,
+    prop_name: str,
+    value_str: str,
+    name: str,
+) -> Tuple[bool, Optional[int]]:
+    """
+    Patch a float property value.
+
+    Returns (changed, patched_index) tuple.
+    """
+    parsed = parse_float_value(value_str)
+    if parsed is None:
+        return False, None
+
+    float_value = parsed.unity_value
+    floats = getattr(data, "floats", [])
+    if not hasattr(data, "floats"):
+        setattr(data, "floats", floats)
+
+    values = list(getattr(prop, "m_Values", []))
+
+    # Try to find existing Type 2 (float) value
+    for val in values:
+        if getattr(val, "m_ValueType", None) == 2:
+            value_index = getattr(val, "valueIndex", None)
+            if value_index is not None and 0 <= value_index < len(floats):
+                old_value = floats[value_index]
+                if abs(old_value - float_value) < 1e-6:  # No change
+                    return False, value_index
+                floats[value_index] = float_value
+                log.info(
+                    f"  [PATCHED - float] {name}: {prop_name} (index {value_index}): {old_value} → {float_value}"
+                )
+                return True, value_index
+
+    # No existing float value, create new one
+    floats.append(float_value)
+    new_index = len(floats) - 1
+
+    # Update or create value handle
+    handle = next(
+        (val for val in values if getattr(val, "m_ValueType", None) in {2, 3, 8, 10}),
+        values[0] if values else None,
+    )
+    if handle:
+        setattr(handle, "m_ValueType", 2)
+        setattr(handle, "valueIndex", new_index)
+        log.info(
+            f"  [PATCHED - float] {name}: {prop_name} (new index {new_index}) → {float_value}"
+        )
+        return True, new_index
+
+    return False, None
+
+
+def _patch_keyword_property(
+    data: Any,
+    prop: Any,
+    prop_name: str,
+    value_str: str,
+    name: str,
+) -> Tuple[bool, Optional[int]]:
+    """
+    Patch a keyword/enum property value.
+
+    Returns (changed, patched_index) tuple.
+    """
+    parsed = parse_keyword_value(value_str)
+    if parsed is None:
+        return False, None
+
+    keyword = parsed.keyword
+    strings = getattr(data, "strings", [])
+    if not hasattr(data, "strings"):
+        setattr(data, "strings", strings)
+
+    values = list(getattr(prop, "m_Values", []))
+
+    # Try to find existing Type 1 or 8 (keyword/enum) value
+    for val in values:
+        value_type = getattr(val, "m_ValueType", None)
+        if value_type in {1, 8}:
+            value_index = getattr(val, "valueIndex", None)
+            if value_index is not None and 0 <= value_index < len(strings):
+                old_value = strings[value_index]
+                if old_value == keyword:  # No change
+                    return False, value_index
+                strings[value_index] = keyword
+                log.info(
+                    f"  [PATCHED - keyword] {name}: {prop_name} (index {value_index}): {old_value} → {keyword}"
+                )
+                return True, value_index
+
+    # No existing keyword value, create new one
+    strings.append(keyword)
+    new_index = len(strings) - 1
+
+    # Update or create value handle
+    handle = next(
+        (val for val in values if getattr(val, "m_ValueType", None) in {1, 3, 8, 10}),
+        values[0] if values else None,
+    )
+    if handle:
+        # Use Type 8 (enum) by default for keywords
+        setattr(handle, "m_ValueType", 8)
+        setattr(handle, "valueIndex", new_index)
+        log.info(
+            f"  [PATCHED - keyword] {name}: {prop_name} (new index {new_index}) → {keyword}"
+        )
+        return True, new_index
+
+    return False, None
+
+
+def _patch_resource_property(
+    data: Any,
+    prop: Any,
+    prop_name: str,
+    value_str: str,
+    name: str,
+) -> Tuple[bool, Optional[int]]:
+    """
+    Patch a resource reference property value.
+
+    Unity USS Type 7 (AssetReference) uses string paths in the strings array,
+    not binary PPtr<Object> references. Unity resolves "resource://..." paths
+    at runtime when building the UI. This means:
+    - We store string paths like "resource://fonts/MyFont"
+    - Unity's resource loader finds and loads the actual Font asset
+    - No FileID/PathID needed for USS stylesheets
+    - This is different from MonoBehaviour serialization which uses PPtr
+
+    Returns (changed, patched_index) tuple.
+    """
+    parsed = parse_resource_value(value_str)
+    if parsed is None:
+        return False, None
+
+    resource_path = parsed.unity_path
+    strings = getattr(data, "strings", [])
+    if not hasattr(data, "strings"):
+        setattr(data, "strings", strings)
+
+    values = list(getattr(prop, "m_Values", []))
+
+    # Try to find existing Type 7 (resource) value
+    for val in values:
+        if getattr(val, "m_ValueType", None) == 7:
+            value_index = getattr(val, "valueIndex", None)
+            if value_index is not None and 0 <= value_index < len(strings):
+                old_value = strings[value_index]
+                if old_value == resource_path:  # No change
+                    return False, value_index
+                # Update in-place, preserving the array index
+                strings[value_index] = resource_path
+                log.info(
+                    f"  [PATCHED - resource] {name}: {prop_name} (index {value_index}): {old_value} → {resource_path}"
+                )
+                return True, value_index
+
+    # No existing resource value, create new one
+    strings.append(resource_path)
+    new_index = len(strings) - 1
+
+    # Update or create value handle
+    handle = next(
+        (val for val in values if getattr(val, "m_ValueType", None) in {3, 7, 8, 10}),
+        values[0] if values else None,
+    )
+    if handle:
+        setattr(handle, "m_ValueType", 7)
+        setattr(handle, "valueIndex", new_index)
+        log.info(
+            f"  [PATCHED - resource] {name}: {prop_name} (new index {new_index}) → {resource_path}"
+        )
+        return True, new_index
+
+    return False, None
 
 
 class CssPatcher:
@@ -504,6 +708,11 @@ class CssPatcher:
             else []
         )
 
+        # Track which CSS variables have been matched/patched
+        matched_css_vars: Set[str] = set()
+        # Track which selector+property pairs have been matched/patched
+        matched_selectors: Set[Tuple[str, str]] = set()
+
         # Direct property patches (by var name == prop m_Name)
         direct_property_patched_indices = set()
         for rule in rules:
@@ -519,22 +728,57 @@ class CssPatcher:
                     ]
                     match_key = next((k for k in candidates if k in css_vars), None)
                 if match_key:
-                    for val in getattr(prop, "m_Values", []):
-                        if getattr(val, "m_ValueType", None) == 4:
-                            value_index = getattr(val, "valueIndex", None)
-                            if value_index is not None and 0 <= value_index < len(
-                                colors
-                            ):
-                                hex_val = css_vars[match_key]
-                                r, g, b, a = hex_to_rgba(hex_val)
-                                col = colors[value_index]
-                                if (col.r, col.g, col.b, col.a) != (r, g, b, a):
-                                    col.r, col.g, col.b, col.a = r, g, b, a
+                    value_str = css_vars[match_key]
+                    matched_css_vars.add(match_key)  # Track matched variable
+
+                    # Check if it's a color property (backwards compatibility)
+                    if _is_color_property(prop_name, value_str):
+                        for val in getattr(prop, "m_Values", []):
+                            if getattr(val, "m_ValueType", None) == 4:
+                                value_index = getattr(val, "valueIndex", None)
+                                if value_index is not None and 0 <= value_index < len(
+                                    colors
+                                ):
+                                    hex_val = value_str
+                                    r, g, b, a = hex_to_rgba(hex_val)
+                                    col = colors[value_index]
+                                    if (col.r, col.g, col.b, col.a) != (r, g, b, a):
+                                        col.r, col.g, col.b, col.a = r, g, b, a
+                                        patched_vars += 1
+                                        direct_property_patched_indices.add(value_index)
+                                        log.info(
+                                            f"  [PATCHED - direct property] {name}: {match_key} (color index {value_index}) → {hex_val}"
+                                        )
+                                        changed = True
+                    else:
+                        # Try to patch as non-color property (float, keyword, resource)
+                        prop_type = PROPERTY_TYPE_MAP.get(prop_name)
+                        if prop_type:
+                            # Determine which type to use based on property definition
+                            patched = False
+                            if 2 in prop_type.unity_types:  # Float
+                                prop_changed, index = _patch_float_property(
+                                    data, prop, prop_name, value_str, name
+                                )
+                                if prop_changed:
+                                    patched = True
                                     patched_vars += 1
-                                    direct_property_patched_indices.add(value_index)
-                                    log.info(
-                                        f"  [PATCHED - direct property] {name}: {match_key} (color index {value_index}) → {hex_val}"
-                                    )
+                                    changed = True
+                            elif 7 in prop_type.unity_types:  # Resource
+                                prop_changed, index = _patch_resource_property(
+                                    data, prop, prop_name, value_str, name
+                                )
+                                if prop_changed:
+                                    patched = True
+                                    patched_vars += 1
+                                    changed = True
+                            elif 1 in prop_type.unity_types or 8 in prop_type.unity_types:  # Keyword
+                                prop_changed, index = _patch_keyword_property(
+                                    data, prop, prop_name, value_str, name
+                                )
+                                if prop_changed:
+                                    patched = True
+                                    patched_vars += 1
                                     changed = True
 
         # If a root-level variable only references other tokens (e.g. var(--foo)) and the user
@@ -553,36 +797,145 @@ class CssPatcher:
                 match_key = next((k for k in candidates if k in css_vars), None)
                 if not match_key:
                     continue
+
+                value_str = css_vars[match_key]
+                matched_css_vars.add(match_key)  # Track matched variable
+
                 values = list(getattr(prop, "m_Values", []))
-                has_literal_color = any(
-                    getattr(val, "m_ValueType", None) == 4 for val in values
-                )
-                if has_literal_color or not values:
+                if not values:
                     continue
 
-                hex_val = css_vars[match_key]
-                r, g, b, a = hex_to_rgba(hex_val)
-                new_color = _build_unity_color(colors, r, g, b, a)
-                colors.append(new_color)
-                new_index = len(colors) - 1
+                # Check if it's a color property
+                if _is_color_property(prop_name, value_str):
+                    has_literal_color = any(
+                        getattr(val, "m_ValueType", None) == 4 for val in values
+                    )
+                    if has_literal_color:
+                        continue
 
-                handle = next(
-                    (
-                        val
-                        for val in values
-                        if getattr(val, "m_ValueType", None) in {3, 8, 10}
-                    ),
-                    values[0],
-                )
-                setattr(handle, "m_ValueType", 4)
-                setattr(handle, "valueIndex", new_index)
+                    # Convert variable reference to literal color
+                    hex_val = value_str
+                    r, g, b, a = hex_to_rgba(hex_val)
+                    new_color = _build_unity_color(colors, r, g, b, a)
+                    colors.append(new_color)
+                    new_index = len(colors) - 1
 
-                patched_vars += 1
-                direct_property_patched_indices.add(new_index)
-                changed = True
-                log.info(
-                    f"  [PATCHED - var literal] {name}: {match_key} (new color index {new_index}) → {hex_val}"
-                )
+                    handle = next(
+                        (
+                            val
+                            for val in values
+                            if getattr(val, "m_ValueType", None) in {3, 8, 10}
+                        ),
+                        values[0],
+                    )
+                    setattr(handle, "m_ValueType", 4)
+                    setattr(handle, "valueIndex", new_index)
+
+                    patched_vars += 1
+                    direct_property_patched_indices.add(new_index)
+                    changed = True
+                    log.info(
+                        f"  [PATCHED - var literal color] {name}: {match_key} (new color index {new_index}) → {hex_val}"
+                    )
+                else:
+                    # Handle non-color properties (float, keyword, resource)
+                    prop_type = PROPERTY_TYPE_MAP.get(prop_name)
+                    if not prop_type:
+                        continue
+
+                    # Check what type of literal value we need
+                    if 2 in prop_type.unity_types:  # Float
+                        # Check if property already has a literal float (Type 2)
+                        has_literal_float = any(
+                            getattr(val, "m_ValueType", None) == 2 for val in values
+                        )
+                        if has_literal_float:
+                            continue
+
+                        # Convert variable reference to literal float
+                        parsed = parse_float_value(value_str)
+                        if parsed:
+                            floats = getattr(data, "floats", [])
+                            if not hasattr(data, "floats"):
+                                setattr(data, "floats", floats)
+
+                            floats.append(parsed.unity_value)
+                            new_index = len(floats) - 1
+
+                            handle = next(
+                                (val for val in values if getattr(val, "m_ValueType", None) in {2, 3, 8, 10}),
+                                values[0],
+                            )
+                            setattr(handle, "m_ValueType", 2)
+                            setattr(handle, "valueIndex", new_index)
+
+                            patched_vars += 1
+                            changed = True
+                            log.info(
+                                f"  [PATCHED - var literal float] {name}: {match_key} (new float index {new_index}) → {parsed.unity_value}"
+                            )
+
+                    elif 1 in prop_type.unity_types or 8 in prop_type.unity_types:  # Keyword
+                        # Check if property already has a literal keyword (Type 1/8)
+                        has_literal_keyword = any(
+                            getattr(val, "m_ValueType", None) in {1, 8} for val in values
+                        )
+                        if has_literal_keyword:
+                            continue
+
+                        # Convert variable reference to literal keyword
+                        parsed = parse_keyword_value(value_str)
+                        if parsed:
+                            strings = getattr(data, "strings", [])
+                            if not hasattr(data, "strings"):
+                                setattr(data, "strings", strings)
+
+                            strings.append(parsed.keyword)
+                            new_index = len(strings) - 1
+
+                            handle = next(
+                                (val for val in values if getattr(val, "m_ValueType", None) in {1, 3, 8, 10}),
+                                values[0],
+                            )
+                            setattr(handle, "m_ValueType", 8)  # Use Type 8 (enum) for keywords
+                            setattr(handle, "valueIndex", new_index)
+
+                            patched_vars += 1
+                            changed = True
+                            log.info(
+                                f"  [PATCHED - var literal keyword] {name}: {match_key} (new string index {new_index}) → {parsed.keyword}"
+                            )
+
+                    elif 7 in prop_type.unity_types:  # Resource
+                        # Check if property already has a literal resource (Type 7)
+                        has_literal_resource = any(
+                            getattr(val, "m_ValueType", None) == 7 for val in values
+                        )
+                        if has_literal_resource:
+                            continue
+
+                        # Convert variable reference to literal resource path
+                        parsed = parse_resource_value(value_str)
+                        if parsed:
+                            strings = getattr(data, "strings", [])
+                            if not hasattr(data, "strings"):
+                                setattr(data, "strings", strings)
+
+                            strings.append(parsed.unity_path)
+                            new_index = len(strings) - 1
+
+                            handle = next(
+                                (val for val in values if getattr(val, "m_ValueType", None) in {3, 7, 8, 10}),
+                                values[0],
+                            )
+                            setattr(handle, "m_ValueType", 7)
+                            setattr(handle, "valueIndex", new_index)
+
+                            patched_vars += 1
+                            changed = True
+                            log.info(
+                                f"  [PATCHED - var literal resource] {name}: {match_key} (new string index {new_index}) → {parsed.unity_path}"
+                            )
 
         # Strict CSS variable patching
         color_indices_to_patch: Dict[int, str] = {}
@@ -692,37 +1045,122 @@ class CssPatcher:
                             ):
                                 continue
                         if key in selector_overrides:
-                            hex_val = selector_overrides[key]
+                            value_str = selector_overrides[key]
+                            matched_selectors.add(key)  # Track matched selector+property
                             log.info(
-                                f"  [DEBUG] Selector/property match: {key} in {name}, patching to {hex_val}"
+                                f"  [DEBUG] Selector/property match: {key} in {name}, patching to {value_str}"
                             )
-                            values = list(getattr(prop, "m_Values", []))
-                            r, g, b, a = hex_to_rgba(hex_val)
-                            found_type4 = False
-                            for val in values:
-                                if getattr(val, "m_ValueType", None) == 4:
-                                    found_type4 = True
-                                    value_index = getattr(val, "valueIndex", None)
-                                    if (
-                                        value_index is not None
-                                        and 0 <= value_index < len(colors)
-                                    ):
-                                        col = colors[value_index]
-                                        if (col.r, col.g, col.b, col.a) != (r, g, b, a):
-                                            col.r, col.g, col.b, col.a = r, g, b, a
-                                            patched_vars += 1
-                                            log.info(
-                                                f"  [PATCHED - selector/property] {name}: {key} (color index {value_index}) → {hex_val}"
-                                            )
-                                            changed = True
-                                        else:
-                                            log.info(
-                                                f"  [PATCHED - selector/property] {name}: {key} (color index {value_index}) already set to {hex_val}"
-                                            )
+
+                            # Check if it's a color property
+                            if _is_color_property(prop_name, value_str):
+                                # Handle color property (existing logic)
+                                values = list(getattr(prop, "m_Values", []))
+                                r, g, b, a = hex_to_rgba(value_str)
+                                found_type4 = False
+                                for val in values:
+                                    if getattr(val, "m_ValueType", None) == 4:
+                                        found_type4 = True
+                                        value_index = getattr(val, "valueIndex", None)
+                                        if (
+                                            value_index is not None
+                                            and 0 <= value_index < len(colors)
+                                        ):
+                                            col = colors[value_index]
+                                            if (col.r, col.g, col.b, col.a) != (r, g, b, a):
+                                                col.r, col.g, col.b, col.a = r, g, b, a
+                                                patched_vars += 1
+                                                log.info(
+                                                    f"  [PATCHED - selector/property] {name}: {key} (color index {value_index}) → {value_str}"
+                                                )
+                                                changed = True
+                                            else:
+                                                log.info(
+                                                    f"  [PATCHED - selector/property] {name}: {key} (color index {value_index}) already set to {value_str}"
+                                                )
+                                            try:
+                                                touches = getattr(
+                                                    self, "_selector_touches", None
+                                                )
+                                                if touches is not None:
+                                                    norm_sel = key[0]
+                                                    touches.setdefault(
+                                                        (
+                                                            norm_sel
+                                                            if norm_sel.startswith(".")
+                                                            else norm_sel,
+                                                            prop_name,
+                                                        ),
+                                                        set(),
+                                                    ).add(name)
+                                            except Exception:
+                                                pass
+                                if not found_type4:
+                                    replacement_handle = next(
+                                        (
+                                            val
+                                            for val in values
+                                            if getattr(val, "m_ValueType", None)
+                                            in {3, 8, 10}
+                                        ),
+                                        None,
+                                    )
+                                    if replacement_handle is None:
+                                        log.warning(
+                                            f"  [WARN] No suitable value found to convert for {key} in {name}."
+                                        )
+                                        continue
+                                    new_color = _build_unity_color(colors, r, g, b, a)
+                                    colors.append(new_color)
+                                    new_index = len(colors) - 1
+                                    setattr(replacement_handle, "m_ValueType", 4)
+                                    setattr(replacement_handle, "valueIndex", new_index)
+                                    patched_vars += 1
+                                    direct_property_patched_indices.add(new_index)
+                                    changed = True
+                                    log.info(
+                                        f"  [PATCHED - selector/property literal] {name}: {key} (new color index {new_index}) → {value_str}"
+                                    )
+                                    try:
+                                        touches = getattr(self, "_selector_touches", None)
+                                        if touches is not None:
+                                            norm_sel = key[0]
+                                            touches.setdefault(
+                                                (
+                                                    norm_sel
+                                                    if norm_sel.startswith(".")
+                                                    else norm_sel,
+                                                    prop_name,
+                                                ),
+                                                set(),
+                                            ).add(name)
+                                    except Exception:
+                                        log.exception(
+                                            "Exception occurred while updating selector touches for %s",
+                                            key,
+                                        )
+                            else:
+                                # Try to patch as non-color property (float, keyword, resource)
+                                prop_type = PROPERTY_TYPE_MAP.get(prop_name)
+                                if prop_type:
+                                    prop_changed = False
+                                    if 2 in prop_type.unity_types:  # Float
+                                        prop_changed, _ = _patch_float_property(
+                                            data, prop, prop_name, value_str, name
+                                        )
+                                    elif 7 in prop_type.unity_types:  # Resource
+                                        prop_changed, _ = _patch_resource_property(
+                                            data, prop, prop_name, value_str, name
+                                        )
+                                    elif 1 in prop_type.unity_types or 8 in prop_type.unity_types:  # Keyword
+                                        prop_changed, _ = _patch_keyword_property(
+                                            data, prop, prop_name, value_str, name
+                                        )
+
+                                    if prop_changed:
+                                        patched_vars += 1
+                                        changed = True
                                         try:
-                                            touches = getattr(
-                                                self, "_selector_touches", None
-                                            )
+                                            touches = getattr(self, "_selector_touches", None)
                                             if touches is not None:
                                                 norm_sel = key[0]
                                                 touches.setdefault(
@@ -736,50 +1174,28 @@ class CssPatcher:
                                                 ).add(name)
                                         except Exception:
                                             pass
-                            if not found_type4:
-                                replacement_handle = next(
-                                    (
-                                        val
-                                        for val in values
-                                        if getattr(val, "m_ValueType", None)
-                                        in {3, 8, 10}
-                                    ),
-                                    None,
-                                )
-                                if replacement_handle is None:
-                                    log.warning(
-                                        f"  [WARN] No suitable value found to convert for {key} in {name}."
-                                    )
-                                    continue
-                                new_color = _build_unity_color(colors, r, g, b, a)
-                                colors.append(new_color)
-                                new_index = len(colors) - 1
-                                setattr(replacement_handle, "m_ValueType", 4)
-                                setattr(replacement_handle, "valueIndex", new_index)
-                                patched_vars += 1
-                                direct_property_patched_indices.add(new_index)
-                                changed = True
-                                log.info(
-                                    f"  [PATCHED - selector/property literal] {name}: {key} (new color index {new_index}) → {hex_val}"
-                                )
-                                try:
-                                    touches = getattr(self, "_selector_touches", None)
-                                    if touches is not None:
-                                        norm_sel = key[0]
-                                        touches.setdefault(
-                                            (
-                                                norm_sel
-                                                if norm_sel.startswith(".")
-                                                else norm_sel,
-                                                prop_name,
-                                            ),
-                                            set(),
-                                        ).add(name)
-                                except Exception:
-                                    log.exception(
-                                        "Exception occurred while updating selector touches for %s",
-                                        key,
-                                    )
+
+        # Phase 3.1: Add new CSS variables that don't exist in the stylesheet
+        unmatched_vars = set(css_vars.keys()) - matched_css_vars
+        if unmatched_vars:
+            new_vars_created = self._add_new_css_variables(
+                data, unmatched_vars, css_vars, name
+            )
+            if new_vars_created > 0:
+                patched_vars += new_vars_created
+                changed = True
+                log.info(f"  [ADDED] {new_vars_created} new CSS variables to {name}")
+
+        # Phase 3.2: Add new CSS selectors that don't exist in the stylesheet
+        unmatched_selectors = set(selector_overrides.keys()) - matched_selectors
+        if unmatched_selectors:
+            new_props_created = self._add_new_css_selectors(
+                data, unmatched_selectors, selector_overrides, name
+            )
+            if new_props_created > 0:
+                patched_vars += new_props_created
+                changed = True
+                log.info(f"  [ADDED] {new_props_created} new selector properties to {name}")
 
         if self.debug_export_dir and changed and not self.dry_run:
             # Ensure dir exists before exporting
@@ -787,6 +1203,347 @@ class CssPatcher:
             self._export_debug_patched(name, data)
 
         return patched_vars, patched_direct, changed
+
+    def _add_new_css_variables(
+        self,
+        data: Any,
+        unmatched_vars: Set[str],
+        css_vars: Dict[str, Any],
+        stylesheet_name: str,
+    ) -> int:
+        """
+        Add new CSS variables that don't exist in the stylesheet.
+
+        Creates properties in a root-level rule for variables that weren't
+        matched during normal patching. This allows users to add completely
+        new CSS variables.
+
+        Args:
+            data: Unity StyleSheet data object
+            unmatched_vars: Set of CSS variable names that weren't matched
+            css_vars: Dictionary mapping variable names to values
+            stylesheet_name: Name of the stylesheet for logging
+
+        Returns:
+            Number of new variables created
+        """
+        if not unmatched_vars:
+            return 0
+
+        # Get arrays
+        colors = getattr(data, "colors", [])
+        strings = getattr(data, "strings", [])
+        floats = getattr(data, "floats", [])
+        rules = getattr(data, "m_Rules", [])
+
+        if not hasattr(data, "floats"):
+            setattr(data, "floats", floats)
+
+        # Find or create root-level rule (rule with no selector)
+        root_rule = None
+        for rule in rules:
+            # Check if rule has no selectors (root level)
+            selectors = getattr(data, "m_ComplexSelectors", [])
+            has_selector = any(
+                getattr(sel, "ruleIndex", None) == rules.index(rule)
+                for sel in selectors
+            )
+            if not has_selector:
+                root_rule = rule
+                break
+
+        # If no root rule exists, create one
+        if root_rule is None:
+            root_rule = SimpleNamespace()
+            setattr(root_rule, "m_Properties", [])
+            setattr(root_rule, "line", -1)
+            rules.append(root_rule)
+            log.info(f"  [CREATED] New root rule in {stylesheet_name} for CSS variables")
+
+        properties = getattr(root_rule, "m_Properties", [])
+        if not isinstance(properties, list):
+            properties = []
+            setattr(root_rule, "m_Properties", properties)
+
+        created_count = 0
+        for var_name in sorted(unmatched_vars):  # Sort for consistent ordering
+            value_str = css_vars[var_name]
+
+            # Determine value type and create property
+            prop = SimpleNamespace()
+            setattr(prop, "m_Name", var_name)
+            setattr(prop, "m_Values", [])
+
+            values_list = getattr(prop, "m_Values")
+
+            # Create value object
+            value_obj = SimpleNamespace()
+
+            # Detect value type and add to appropriate array
+            if _is_color_property(var_name, value_str):
+                # Color value
+                r, g, b, a = hex_to_rgba(value_str)
+                new_color = _build_unity_color(colors, r, g, b, a)
+                colors.append(new_color)
+                value_index = len(colors) - 1
+
+                setattr(value_obj, "m_ValueType", 4)
+                setattr(value_obj, "valueIndex", value_index)
+                log.info(f"  [NEW VAR - color] {stylesheet_name}: {var_name} → {value_str} (color index {value_index})")
+
+            elif (parsed_float := parse_float_value(value_str)) is not None:
+                # Float value
+                floats.append(parsed_float.unity_value)
+                value_index = len(floats) - 1
+
+                setattr(value_obj, "m_ValueType", 2)
+                setattr(value_obj, "valueIndex", value_index)
+                log.info(f"  [NEW VAR - float] {stylesheet_name}: {var_name} → {parsed_float.unity_value} (float index {value_index})")
+
+            elif (parsed_keyword := parse_keyword_value(value_str)) is not None:
+                # Keyword value
+                strings.append(parsed_keyword.keyword)
+                value_index = len(strings) - 1
+
+                setattr(value_obj, "m_ValueType", 8)
+                setattr(value_obj, "valueIndex", value_index)
+                log.info(f"  [NEW VAR - keyword] {stylesheet_name}: {var_name} → {parsed_keyword.keyword} (string index {value_index})")
+
+            elif (parsed_resource := parse_resource_value(value_str)) is not None:
+                # Resource value
+                strings.append(parsed_resource.unity_path)
+                value_index = len(strings) - 1
+
+                setattr(value_obj, "m_ValueType", 7)
+                setattr(value_obj, "valueIndex", value_index)
+                log.info(f"  [NEW VAR - resource] {stylesheet_name}: {var_name} → {parsed_resource.unity_path} (string index {value_index})")
+
+            else:
+                # Fallback: store as string (Type 8)
+                strings.append(value_str)
+                value_index = len(strings) - 1
+
+                setattr(value_obj, "m_ValueType", 8)
+                setattr(value_obj, "valueIndex", value_index)
+                log.warning(f"  [NEW VAR - unknown] {stylesheet_name}: {var_name} → {value_str} (stored as string)")
+
+            values_list.append(value_obj)
+            properties.append(prop)
+            created_count += 1
+
+        return created_count
+
+    def _add_new_css_selectors(
+        self,
+        data: Any,
+        unmatched_selectors: Set[Tuple[str, str]],
+        selector_overrides: Dict[Tuple[str, str], Any],
+        stylesheet_name: str,
+    ) -> int:
+        """
+        Add new CSS selectors that don't exist in the stylesheet.
+
+        Creates new rules and complex selectors for selector+property pairs that
+        weren't matched during normal patching. This allows users to add completely
+        new CSS classes or selectors.
+
+        Args:
+            data: Unity StyleSheet data object
+            unmatched_selectors: Set of (selector, property) tuples that weren't matched
+            selector_overrides: Dictionary mapping (selector, property) to values
+            stylesheet_name: Name of the stylesheet for logging
+
+        Returns:
+            Number of new properties created across all selectors
+        """
+        if not unmatched_selectors:
+            return 0
+
+        # Get arrays
+        colors = getattr(data, "colors", [])
+        strings = getattr(data, "strings", [])
+        floats = getattr(data, "floats", [])
+        rules = getattr(data, "m_Rules", [])
+        complex_selectors = getattr(data, "m_ComplexSelectors", [])
+
+        if not hasattr(data, "floats"):
+            setattr(data, "floats", floats)
+        if not hasattr(data, "m_ComplexSelectors"):
+            setattr(data, "m_ComplexSelectors", complex_selectors)
+
+        # Group properties by selector
+        from collections import defaultdict
+
+        selector_props: DefaultDict[str, List[Tuple[str, Any]]] = defaultdict(list)
+        for selector, prop_name in unmatched_selectors:
+            value = selector_overrides.get((selector, prop_name))
+            if value is not None:
+                selector_props[selector].append((prop_name, value))
+
+        created_count = 0
+        for selector_text in sorted(selector_props.keys()):
+            props_to_add = selector_props[selector_text]
+
+            # Create new rule
+            new_rule = SimpleNamespace()
+            setattr(new_rule, "m_Properties", [])
+            setattr(new_rule, "line", -1)
+            rule_index = len(rules)
+            rules.append(new_rule)
+
+            # Add all properties to the rule
+            properties = getattr(new_rule, "m_Properties")
+            for prop_name, value_str in props_to_add:
+                # Create property
+                prop = SimpleNamespace()
+                setattr(prop, "m_Name", prop_name)
+                setattr(prop, "m_Values", [])
+
+                values_list = getattr(prop, "m_Values")
+                value_obj = SimpleNamespace()
+
+                # Detect value type and add to appropriate array
+                if _is_color_property(prop_name, value_str):
+                    # Color value
+                    r, g, b, a = hex_to_rgba(value_str)
+                    new_color = _build_unity_color(colors, r, g, b, a)
+                    colors.append(new_color)
+                    value_index = len(colors) - 1
+
+                    setattr(value_obj, "m_ValueType", 4)
+                    setattr(value_obj, "valueIndex", value_index)
+                    log.info(
+                        f"  [NEW SELECTOR - color] {stylesheet_name}: {selector_text} {{ {prop_name}: {value_str}; }}"
+                    )
+
+                elif (parsed_float := parse_float_value(value_str)) is not None:
+                    # Float value
+                    floats.append(parsed_float.unity_value)
+                    value_index = len(floats) - 1
+
+                    setattr(value_obj, "m_ValueType", 2)
+                    setattr(value_obj, "valueIndex", value_index)
+                    log.info(
+                        f"  [NEW SELECTOR - float] {stylesheet_name}: {selector_text} {{ {prop_name}: {parsed_float.unity_value}; }}"
+                    )
+
+                elif (parsed_keyword := parse_keyword_value(value_str)) is not None:
+                    # Keyword value
+                    strings.append(parsed_keyword.keyword)
+                    value_index = len(strings) - 1
+
+                    setattr(value_obj, "m_ValueType", 8)
+                    setattr(value_obj, "valueIndex", value_index)
+                    log.info(
+                        f"  [NEW SELECTOR - keyword] {stylesheet_name}: {selector_text} {{ {prop_name}: {parsed_keyword.keyword}; }}"
+                    )
+
+                elif (parsed_resource := parse_resource_value(value_str)) is not None:
+                    # Resource value
+                    strings.append(parsed_resource.unity_path)
+                    value_index = len(strings) - 1
+
+                    setattr(value_obj, "m_ValueType", 7)
+                    setattr(value_obj, "valueIndex", value_index)
+                    log.info(
+                        f"  [NEW SELECTOR - resource] {stylesheet_name}: {selector_text} {{ {prop_name}: {parsed_resource.unity_path}; }}"
+                    )
+
+                else:
+                    # Fallback: store as string
+                    strings.append(value_str)
+                    value_index = len(strings) - 1
+
+                    setattr(value_obj, "m_ValueType", 8)
+                    setattr(value_obj, "valueIndex", value_index)
+                    log.warning(
+                        f"  [NEW SELECTOR - unknown] {stylesheet_name}: {selector_text} {{ {prop_name}: {value_str}; }}"
+                    )
+
+                values_list.append(value_obj)
+                properties.append(prop)
+                created_count += 1
+
+            # Create ComplexSelector for this rule
+            complex_selector = self._create_complex_selector(selector_text, rule_index, strings)
+            complex_selectors.append(complex_selector)
+
+            log.info(
+                f"  [NEW SELECTOR] {stylesheet_name}: Created selector '{selector_text}' with {len(props_to_add)} properties"
+            )
+
+        return created_count
+
+    def _create_complex_selector(
+        self, selector_text: str, rule_index: int, strings: List[str]
+    ) -> SimpleNamespace:
+        """
+        Create a ComplexSelector from a selector string (e.g., ".button", "#myid", "Label").
+
+        Args:
+            selector_text: CSS selector string
+            rule_index: Index of the rule this selector points to
+            strings: Strings array (for storing selector values)
+
+        Returns:
+            ComplexSelector object
+        """
+        complex_selector = SimpleNamespace()
+        setattr(complex_selector, "ruleIndex", rule_index)
+        setattr(complex_selector, "m_Selectors", [])
+
+        # Create a simple selector with parts
+        simple_selector = SimpleNamespace()
+        setattr(simple_selector, "m_Parts", [])
+        setattr(simple_selector, "m_PreviousRelationship", 0)  # No relationship
+
+        # Parse selector text into parts
+        parts = getattr(simple_selector, "m_Parts")
+        selector_part = self._parse_selector_to_part(selector_text, strings)
+        parts.append(selector_part)
+
+        selectors_list = getattr(complex_selector, "m_Selectors")
+        selectors_list.append(simple_selector)
+
+        return complex_selector
+
+    def _parse_selector_to_part(
+        self, selector_text: str, strings: List[str]
+    ) -> SimpleNamespace:
+        """
+        Parse a selector string into a Unity selector part.
+
+        Args:
+            selector_text: CSS selector string (e.g., ".button", "#myid", "Label", ":hover")
+            strings: Strings array (for storing values)
+
+        Returns:
+            Selector part object with m_Value and m_Type
+        """
+        part = SimpleNamespace()
+
+        # Determine selector type and value
+        if selector_text.startswith("#"):
+            # ID selector
+            value = selector_text[1:]  # Remove #
+            setattr(part, "m_Type", 2)
+            setattr(part, "m_Value", value)
+        elif selector_text.startswith("."):
+            # Class selector
+            value = selector_text[1:]  # Remove .
+            setattr(part, "m_Type", 3)
+            setattr(part, "m_Value", value)
+        elif selector_text.startswith(":"):
+            # Pseudo-class selector
+            value = selector_text[1:]  # Remove :
+            setattr(part, "m_Type", 4)
+            setattr(part, "m_Value", value)
+        else:
+            # Element/type selector
+            setattr(part, "m_Type", 1)
+            setattr(part, "m_Value", selector_text)
+
+        return part
 
     def _export_debug_original(self, name: str, data) -> None:
         assert self.debug_export_dir is not None
@@ -930,6 +1687,8 @@ class PipelineResult:
         css_bundles_modified: Number of CSS bundles that were actually modified.
         texture_replacements_total: Total count of texture replacements across all bundles.
         texture_bundles_written: Number of bundles written with texture changes.
+        font_replacements_total: Total count of font replacements across all bundles.
+        font_bundles_written: Number of bundles written with font changes.
         bundles_requested: Total number of bundles requested for processing.
         summary_lines: Human-readable summary lines for CLI output.
     """
@@ -938,6 +1697,8 @@ class PipelineResult:
     css_bundles_modified: int
     texture_replacements_total: int
     texture_bundles_written: int
+    font_replacements_total: int
+    font_bundles_written: int
     bundles_requested: int
     summary_lines: List[str] = field(default_factory=list)
 
@@ -948,6 +1709,8 @@ class PipelineResult:
             css_bundles_modified=0,
             texture_replacements_total=0,
             texture_bundles_written=0,
+            font_replacements_total=0,
+            font_bundles_written=0,
             bundles_requested=0,
             summary_lines=[],
         )
@@ -1049,11 +1812,29 @@ class SkinPatchPipeline:
                 TextureSwapOptions(includes=includes_list, dry_run=self.options.dry_run)
             )
 
+        # Font swap service
+        font_targets_present = any(
+            x.strip().lower() in {"fonts", "assets/fonts", "all"}
+            for x in includes_list
+        )
+        font_service: Optional[FontSwapService] = None
+        if font_targets_present:
+            font_service = FontSwapService(
+                FontSwapOptions(
+                    includes=includes_list,
+                    dry_run=self.options.dry_run,
+                    auto_convert=True,   # Auto-convert to match original format (critical!)
+                    strict_format=False, # Allow conversion to handle mismatches
+                )
+            )
+
         summary_lines: List[str] = []
         bundle_reports: List[PatchReport] = []
         css_bundles_modified = 0
         texture_replacements_total = 0
         texture_bundles_written = 0
+        font_replacements_total = 0
+        font_bundles_written = 0
 
         log.info(f"\n📦 Processing {len(bundle_files)} bundle(s)...")
 
@@ -1066,6 +1847,7 @@ class SkinPatchPipeline:
                 bundle_path,
                 css_service=css_service,
                 texture_service=texture_service,
+                font_service=font_service,
                 cache_candidates=cache_candidates,
                 hints_assets=hints_assets,
                 skin_cache_dir=skin_cache_dir,
@@ -1088,6 +1870,10 @@ class SkinPatchPipeline:
             if not self.options.dry_run and report.texture_replacements > 0:
                 texture_bundles_written += 1
 
+            font_replacements_total += report.font_replacements
+            if not self.options.dry_run and report.font_replacements > 0:
+                font_bundles_written += 1
+
             bundle_reports.append(report)
 
         # Completion summary
@@ -1106,6 +1892,8 @@ class SkinPatchPipeline:
             css_bundles_modified=css_bundles_modified,
             texture_replacements_total=texture_replacements_total,
             texture_bundles_written=texture_bundles_written,
+            font_replacements_total=font_replacements_total,
+            font_bundles_written=font_bundles_written,
             bundles_requested=bundles_requested,
             summary_lines=summary_lines,
         )
@@ -1130,6 +1918,7 @@ class SkinPatchPipeline:
         *,
         css_service: CssPatchService,
         texture_service: Optional[TextureSwapService],
+        font_service: Optional[FontSwapService],
         cache_candidates: Dict[Path, Optional[Set[str]]],
         hints_assets: Optional[Set[str]],
         skin_cache_dir: Optional[Path],
@@ -1217,6 +2006,17 @@ class SkinPatchPipeline:
                     log.debug(
                         "[TEXTURE] Prefilter: skipping bundle with no matching names or pending sprite rebinds."
                     )
+
+            # Font replacement
+            if font_service:
+                try:
+                    font_service.apply(
+                        bundle_ctx,
+                        self.css_dir,
+                        report,
+                    )
+                except Exception as exc:
+                    log.warning(f"[WARN] Font swap skipped due to error: {exc}")
 
             saved_path = bundle_ctx.save_modified(
                 self.out_dir, dry_run=self.options.dry_run
