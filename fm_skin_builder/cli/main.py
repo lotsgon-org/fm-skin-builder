@@ -138,28 +138,6 @@ def main() -> None:
     )
     d.add_argument("--pretty", action="store_true", help="Pretty-print JSON output")
 
-    # Catalogue note command
-    n = sub.add_parser(
-        "catalogue-note", help="Add or view notes for a catalogue version"
-    )
-    n.add_argument(
-        "--catalogue-dir",
-        type=str,
-        required=True,
-        help="Path to catalogue version directory",
-    )
-    n.add_argument(
-        "--note",
-        type=str,
-        default=None,
-        help="Note to add (if omitted, displays current notes)",
-    )
-    n.add_argument(
-        "--append",
-        action="store_true",
-        help="Append to existing notes instead of replacing",
-    )
-
     args = parser.parse_args()
 
     if args.command == "build":
@@ -179,9 +157,6 @@ def main() -> None:
     elif args.command == "catalogue-diff":
         from .commands import catalogue_diff as cmd_catalogue_diff
         cmd_catalogue_diff.run(args)
-    elif args.command == "catalogue-note":
-        from .commands import catalogue_note as cmd_catalogue_note
-        cmd_catalogue_note.run(args)
 
     # Mitigate rare CPython finalization crash observed with C extensions (e.g., compression libs)
     # by forcing an immediate process exit after flushing. Can be disabled by setting FM_HARD_EXIT=0.

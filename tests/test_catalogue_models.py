@@ -160,7 +160,7 @@ def test_catalogue_metadata():
     )
 
     assert metadata.fm_version == "2026.4.0"
-    assert metadata.schema_version == "2.0.0"
+    assert metadata.schema_version == "2.1.0"
     assert len(metadata.bundles_scanned) == 2
     assert metadata.total_assets["sprites"] == 100
 

@@ -544,7 +544,6 @@ class VersionDiffer:
             "summary": {},
             "changes_by_type": {},
             "changes_by_stylesheet": {},
-            "notes": "",
         }
 
         # Build summary

@@ -28,6 +28,14 @@ from .exporter import CatalogueExporter
 from .version_differ import VersionDiffer
 from ..logger import get_logger
 
+try:
+    from packaging.version import Version, InvalidVersion
+except ImportError:
+    # Fallback if packaging not available
+    log.warning("packaging library not found - version comparison may be inaccurate")
+    Version = None
+    InvalidVersion = Exception
+
 
 log = get_logger(__name__)
 
@@ -467,7 +475,7 @@ class CatalogueBuilder:
         """Create catalogue metadata."""
         return CatalogueMetadata(
             fm_version=self.fm_version,
-            schema_version="2.0.0",
+            schema_version="2.1.0",
             generated_at=datetime.utcnow(),
             bundles_scanned=self.bundles_scanned,
             total_assets={
@@ -479,9 +487,114 @@ class CatalogueBuilder:
             },
         )
 
-    def _find_previous_version(self) -> Optional[Path]:
+    def _parse_version_with_beta(self, version_str: str) -> tuple[Optional[Any], bool]:
         """
-        Find the most recent previous FM version in the catalogue directory.
+        Parse version string and detect if it's beta.
+
+        Args:
+            version_str: Version string like "2026.0.5" or "2026.0.5-beta" or "2026.0.4-v1"
+
+        Returns:
+            Tuple of (Version object or None, is_beta flag)
+
+        Examples:
+            "2026.0.5-beta" → (Version("2026.0.5b0"), True)
+            "2026.0.5" → (Version("2026.0.5"), False)
+            "2026.0.4-v1" → (Version("2026.0.4"), False)  # Old format
+        """
+        if Version is None:
+            # Fallback: return None and False
+            return None, False
+
+        # Strip old -v1, -v2 suffixes from old format
+        clean_version = version_str
+        if '-v' in version_str:
+            parts = version_str.split('-v')
+            if len(parts) == 2 and parts[1].isdigit():
+                # Old format like 2026.0.4-v1
+                clean_version = parts[0]
+
+        # Detect beta
+        is_beta = '-beta' in clean_version
+
+        # Convert to packaging.version format (2026.0.5-beta → 2026.0.5b0)
+        if is_beta:
+            clean_version = clean_version.replace('-beta', 'b0')
+
+        try:
+            return Version(clean_version), is_beta
+        except (InvalidVersion, Exception):
+            log.warning(f"Invalid version format: {version_str}")
+            return None, False
+
+    def _find_previous_stable(self) -> Optional[Path]:
+        """
+        Find the most recent stable version before current version.
+
+        Returns:
+            Path to previous stable version directory, or None if not found
+        """
+        if not self.base_output_dir.exists():
+            return None
+
+        current_version, is_current_beta = self._parse_version_with_beta(self.fm_version)
+        if not current_version:
+            # Fallback to simple string comparison
+            return self._find_previous_version_fallback()
+
+        candidates = []
+
+        for d in self.base_output_dir.iterdir():
+            if not d.is_dir() or d.name == self.fm_version:
+                continue
+
+            parsed, is_beta = self._parse_version_with_beta(d.name)
+            if not parsed or is_beta:
+                # Skip betas when looking for stable versions
+                continue
+
+            if parsed < current_version:
+                candidates.append((parsed, d))
+
+        if not candidates:
+            return None
+
+        # Sort by version (highest first)
+        candidates.sort(reverse=True, key=lambda x: x[0])
+        prev_dir = candidates[0][1]
+
+        log.info(f"  Found previous stable version: {prev_dir.name}")
+        return prev_dir
+
+    def _find_matching_beta(self) -> Optional[Path]:
+        """
+        Find beta version matching current stable version.
+
+        Example: If building 2026.0.5, look for 2026.0.5-beta
+
+        Returns:
+            Path to matching beta directory, or None if not found
+        """
+        current_version, is_current_beta = self._parse_version_with_beta(self.fm_version)
+
+        if is_current_beta or not current_version:
+            # Current is beta or unparseable
+            return None
+
+        # Look for matching beta
+        beta_name = f"{current_version.public}-beta"
+        beta_path = self.base_output_dir / beta_name
+
+        if beta_path.exists() and beta_path.is_dir():
+            log.info(f"  Found matching beta version: {beta_name}")
+            return beta_path
+
+        return None
+
+    def _find_previous_version_fallback(self) -> Optional[Path]:
+        """
+        Fallback method for finding previous version without semantic versioning.
+        Uses simple string sorting.
 
         Returns:
             Path to previous version directory, or None if not found
@@ -489,7 +602,6 @@ class CatalogueBuilder:
         if not self.base_output_dir.exists():
             return None
 
-        # Get all version directories (assume they're named like "2026.4.0")
         version_dirs = [
             d
             for d in self.base_output_dir.iterdir()
@@ -499,44 +611,86 @@ class CatalogueBuilder:
         if not version_dirs:
             return None
 
-        # Sort by directory name (assumes semantic versioning like 2026.4.0)
-        # This is a simple sort - for more complex version comparison, use packaging.version
+        # Sort by directory name
         version_dirs.sort(reverse=True)
 
-        # Return the most recent version
         prev_dir = version_dirs[0]
-        log.info(f"  Found previous version: {prev_dir.name}")
+        log.info(f"  Found previous version (fallback): {prev_dir.name}")
         return prev_dir
 
+    def _determine_comparison_targets(self) -> Dict[str, Any]:
+        """
+        Determine which versions to compare against for changelog generation.
+
+        Returns:
+            Dictionary with:
+                'primary': Path to primary comparison target (previous stable)
+                'secondary': Path to secondary target (beta if building stable)
+                'primary_type': 'stable-to-stable' or 'stable-to-beta'
+                'secondary_type': 'beta-to-stable' or None
+        """
+        current_version, is_current_beta = self._parse_version_with_beta(self.fm_version)
+
+        result = {
+            'primary': None,
+            'secondary': None,
+            'primary_type': None,
+            'secondary_type': None
+        }
+
+        # Find previous stable version
+        prev_stable = self._find_previous_stable()
+
+        if is_current_beta:
+            # Building beta: compare to previous stable
+            result['primary'] = prev_stable
+            result['primary_type'] = 'stable-to-beta'
+
+        else:
+            # Building stable: compare to previous stable (PRIMARY)
+            result['primary'] = prev_stable
+            result['primary_type'] = 'stable-to-stable'
+
+            # Also compare to beta (SECONDARY)
+            matching_beta = self._find_matching_beta()
+            if matching_beta:
+                result['secondary'] = matching_beta
+                result['secondary_type'] = 'beta-to-stable'
+
+        return result
+
     def _generate_changelog_if_needed(self) -> None:
-        """Generate changelog by comparing with previous version if it exists."""
+        """Generate primary and optionally secondary (beta) changelogs."""
         import json
 
-        prev_version_dir = self._find_previous_version()
+        targets = self._determine_comparison_targets()
 
-        if not prev_version_dir:
+        if not targets['primary']:
             log.info("  No previous version found - skipping changelog generation")
             return
 
+        # Generate PRIMARY changelog (vs stable)
         try:
             log.info(
-                f"  Generating changelog from {prev_version_dir.name} to {self.fm_version}"
+                f"  Generating PRIMARY changelog: {targets['primary'].name} → {self.fm_version} ({targets['primary_type']})"
             )
 
-            # Create differ and compare
-            differ = VersionDiffer(prev_version_dir, self.output_dir)
+            differ = VersionDiffer(targets['primary'], self.output_dir)
             differ.load_catalogues()
             changelog = differ.compare()
 
-            # Save changelog as JSON
-            changelog_path = self.output_dir / "changelog.json"
+            # Add comparison type to changelog
+            changelog['comparison_type'] = targets['primary_type']
+
+            # Save primary changelog
+            changelog_path = self.output_dir / "changelog-summary.json"
             with open(changelog_path, "w", encoding="utf-8") as f:
                 indent = 2 if self.pretty_json else None
                 json.dump(changelog, f, ensure_ascii=False, indent=indent)
 
-            log.info(f"  ✅ Changelog saved: {changelog_path}")
+            log.info(f"  ✅ Primary changelog saved: {changelog_path}")
 
-            # Also generate HTML report
+            # Generate HTML report
             html_report = differ.generate_html_report(changelog)
             html_path = self.output_dir / "changelog.html"
             with open(html_path, "w", encoding="utf-8") as f:
@@ -549,8 +703,9 @@ class CatalogueBuilder:
             with open(metadata_path, "r", encoding="utf-8") as f:
                 metadata = json.load(f)
 
-            metadata["previous_fm_version"] = prev_version_dir.name
+            metadata["previous_fm_version"] = targets['primary'].name
             metadata["changes_since_previous"] = changelog["summary"]
+            metadata["comparison_type"] = targets['primary_type']
 
             with open(metadata_path, "w", encoding="utf-8") as f:
                 indent = 2 if self.pretty_json else None
@@ -559,7 +714,68 @@ class CatalogueBuilder:
             log.info("  ✅ Metadata updated with changelog summary")
 
         except Exception as e:
-            log.error(f"  Failed to generate changelog: {e}")
+            log.error(f"  Failed to generate primary changelog: {e}")
             import traceback
-
             log.debug(traceback.format_exc())
+
+        # Generate SECONDARY changelog (beta → stable, if applicable)
+        if targets['secondary']:
+            try:
+                log.info(
+                    f"  Generating SECONDARY changelog: {targets['secondary'].name} → {self.fm_version} ({targets['secondary_type']})"
+                )
+
+                beta_differ = VersionDiffer(targets['secondary'], self.output_dir)
+                beta_differ.load_catalogues()
+                beta_changelog = beta_differ.compare()
+
+                # Add comparison type
+                beta_changelog['comparison_type'] = targets['secondary_type']
+
+                # Save beta changelog
+                beta_changelog_path = self.output_dir / "beta-changelog-summary.json"
+                with open(beta_changelog_path, "w", encoding="utf-8") as f:
+                    indent = 2 if self.pretty_json else None
+                    json.dump(beta_changelog, f, ensure_ascii=False, indent=indent)
+
+                log.info(f"  ✅ Beta changelog saved: {beta_changelog_path}")
+
+                # Save detailed beta changes (simplified version for website)
+                beta_changes = self._extract_beta_changes(beta_changelog)
+                beta_changes_path = self.output_dir / "beta-changes.json"
+                with open(beta_changes_path, "w", encoding="utf-8") as f:
+                    indent = 2 if self.pretty_json else None
+                    json.dump(beta_changes, f, ensure_ascii=False, indent=indent)
+
+                log.info(f"  ✅ Beta changes saved: {beta_changes_path}")
+
+            except Exception as e:
+                log.error(f"  Failed to generate beta changelog: {e}")
+                import traceback
+                log.debug(traceback.format_exc())
+
+    def _extract_beta_changes(self, changelog: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Extract simplified beta changes for website consumption.
+
+        Args:
+            changelog: Full changelog dictionary
+
+        Returns:
+            Simplified changes dictionary with lists of names by type
+        """
+        beta_changes = {}
+
+        for asset_type in ['sprites', 'textures', 'css_variables', 'css_classes', 'fonts']:
+            type_key = asset_type if asset_type != 'css_variables' and asset_type != 'css_classes' else asset_type.replace('_', '_')
+
+            if type_key in changelog.get('changes_by_type', {}):
+                type_changes = changelog['changes_by_type'][type_key]
+
+                beta_changes[asset_type] = {
+                    'new': [c['name'] for c in type_changes.get('added', [])],
+                    'modified': [c['name'] for c in type_changes.get('modified', [])],
+                    'removed': [c['name'] for c in type_changes.get('removed', [])]
+                }
+
+        return beta_changes
