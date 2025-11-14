@@ -104,12 +104,10 @@ def get_artifact_info(
                 is_updater = True
                 platform_key = "windows-x86_64"
 
-            # Windows installers (.exe, .msi)
-            elif file.endswith(".exe") or (
-                file.endswith(".msi") and not file.endswith(".msi.zip")
-            ):
+            # Windows installers (MSI only - Tauri preferred format)
+            elif file.endswith(".msi") and not file.endswith(".msi.zip"):
                 is_installer = True
-                installer_format = "exe" if file.endswith(".exe") else "msi"
+                installer_format = "msi"
                 platform_key = "windows-x86_64"
 
             # Linux updater files (.AppImage.tar.gz)

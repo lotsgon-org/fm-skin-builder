@@ -332,8 +332,8 @@ jobs:
             find frontend/src-tauri/target/${{ matrix.settings.target }}/release/bundle -name "*.AppImage.tar.gz" -exec cp {} artifacts/ \; || true
             find frontend/src-tauri/target/${{ matrix.settings.target }}/release/bundle -name "*.AppImage.tar.gz.sig" -exec cp {} artifacts/ \; || true
           elif [ "${{ matrix.settings.platform }}" = "windows-latest" ]; then
-            # User installers
-            find frontend/src-tauri/target/${{ matrix.settings.target }}/release/bundle -name "*.exe" -exec cp {} artifacts/ \; || true
+            # User installers (exclude fm_skin_builder.exe which is the backend binary)
+            find frontend/src-tauri/target/${{ matrix.settings.target }}/release/bundle -name "*.exe" ! -name "fm_skin_builder.exe" -exec cp {} artifacts/ \; || true
             find frontend/src-tauri/target/${{ matrix.settings.target }}/release/bundle -name "*.msi" -exec cp {} artifacts/ \; || true
             # Updater files (if they exist)
             find frontend/src-tauri/target/${{ matrix.settings.target }}/release/bundle -name "*.msi.zip" -exec cp {} artifacts/ \; || true
@@ -386,8 +386,8 @@ jobs:
       - name: Flatten artifacts
         run: |
           mkdir -p artifacts
-          # Move all files from subdirectories to artifacts/ root
-          find artifacts-temp -type f \( -name "*.dmg" -o -name "*.exe" -o -name "*.msi" -o -name "*.AppImage" -o -name "*.deb" -o -name "*.tar.gz" -o -name "*.zip" -o -name "*.sig" \) -exec mv {} artifacts/ \;
+          # Move all files from subdirectories to artifacts/ root (exclude fm_skin_builder.exe)
+          find artifacts-temp -type f \( -name "*.dmg" -o -name "*.exe" -o -name "*.msi" -o -name "*.AppImage" -o -name "*.deb" -o -name "*.tar.gz" -o -name "*.zip" -o -name "*.sig" \) ! -name "fm_skin_builder.exe" -exec mv {} artifacts/ \;
           echo "Flattened artifacts:"
           ls -lah artifacts/
 
@@ -463,8 +463,8 @@ jobs:
       - name: Flatten artifacts
         run: |
           mkdir -p artifacts
-          # Move all files from subdirectories to artifacts/ root
-          find artifacts-temp -type f \( -name "*.dmg" -o -name "*.exe" -o -name "*.msi" -o -name "*.AppImage" -o -name "*.deb" -o -name "*.tar.gz" -o -name "*.zip" -o -name "*.sig" \) -exec mv {} artifacts/ \;
+          # Move all files from subdirectories to artifacts/ root (exclude fm_skin_builder.exe)
+          find artifacts-temp -type f \( -name "*.dmg" -o -name "*.exe" -o -name "*.msi" -o -name "*.AppImage" -o -name "*.deb" -o -name "*.tar.gz" -o -name "*.zip" -o -name "*.sig" \) ! -name "fm_skin_builder.exe" -exec mv {} artifacts/ \;
           echo "Flattened artifacts:"
           ls -lah artifacts/
 
