@@ -50,6 +50,14 @@
     "updater:default",
     "updater:allow-download-and-install",
     "updater:allow-install",
-    "updater:allow-download"
+    "updater:allow-download",
+    {
+      "identifier": "http:default",
+      "allow": [
+        {
+          "url": "https://release.fmskinbuilder.com"
+        }
+      ]
+    }
   ]
 }
