@@ -1028,9 +1028,42 @@ class CssPatcher:
             f"  [RULE SPLIT] {name}: Splitting rule {rule_idx} to isolate {target_selector_text}"
         )
 
-        # Create a deep copy of the rule
+        # Create a new rule by manually copying properties (can't use deepcopy on Unity objects)
         original_rule = rules[rule_idx]
-        new_rule = copy.deepcopy(original_rule)
+
+        # Create a new rule object of the same type
+        new_rule = type(original_rule)()
+
+        # Create NEW property objects (not just copy the list)
+        # This ensures modifications to the new rule don't affect the old rule
+        original_props = getattr(original_rule, "m_Properties", [])
+        if original_props:
+            new_props = []
+            for orig_prop in original_props:
+                # Create a new property object of the same type
+                new_prop = type(orig_prop)()
+                # Copy the property name
+                setattr(new_prop, "m_Name", getattr(orig_prop, "m_Name", ""))
+                # Copy line number if present
+                if hasattr(orig_prop, "m_Line"):
+                    setattr(new_prop, "m_Line", getattr(orig_prop, "m_Line"))
+                # Create NEW value objects too (not just a new list)
+                # This ensures when patching modifies a value object, it doesn't affect the original rule
+                orig_values = getattr(orig_prop, "m_Values", [])
+                new_values = []
+                for orig_val in orig_values:
+                    new_val = type(orig_val)()
+                    # Copy all attributes
+                    setattr(new_val, "m_ValueType", getattr(orig_val, "m_ValueType", None))
+                    setattr(new_val, "valueIndex", getattr(orig_val, "valueIndex", None))
+                    new_values.append(new_val)
+                setattr(new_prop, "m_Values", new_values)
+                new_props.append(new_prop)
+            setattr(new_rule, "m_Properties", new_props)
+
+        # Copy line number if it exists
+        if hasattr(original_rule, "line"):
+            setattr(new_rule, "line", getattr(original_rule, "line"))
 
         # Add the new rule to the rules array
         rules.append(new_rule)
