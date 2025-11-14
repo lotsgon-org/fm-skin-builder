@@ -53,15 +53,24 @@ pub async fn download_and_install_update(
         .get(platform)
         .ok_or_else(|| format!("No update available for platform: {}", platform))?;
 
-    // For now, we'll use the first installer URL
-    // In a full implementation, you'd want to handle different installer types
-    let installer_url = platform_info
+    // Get the first installer (prefer MSI for Windows, DMG for macOS, AppImage for Linux)
+    let installer = platform_info
         .installers
-        .first()
-        .map(|installer| &installer.url)
-        .ok_or_else(|| "No installer URL found".to_string())?;
+        .iter()
+        .find(|installer| match platform {
+            "windows-x86_64" => installer.format == "msi",
+            "darwin-aarch64" | "darwin-x86_64" => installer.format == "dmg",
+            "linux-x86_64" => installer.format == "AppImage" || installer.format == "deb",
+            _ => false,
+        })
+        .or_else(|| platform_info.installers.first())
+        .ok_or_else(|| "No suitable installer found".to_string())?;
+
+    let installer_url = &installer.url;
+    let installer_format = &installer.format;
 
     println!("Downloading update from: {}", installer_url);
+    println!("Installer format: {}", installer_format);
 
     // Download the installer
     let response = reqwest::get(installer_url)
@@ -82,7 +91,11 @@ pub async fn download_and_install_update(
 
     // Save to a temporary location
     let temp_dir = std::env::temp_dir();
-    let installer_path = temp_dir.join(format!("fm-skin-builder-update-{}", metadata.version));
+    let installer_filename = format!(
+        "fm-skin-builder-update-{}.{}",
+        metadata.version, installer_format
+    );
+    let installer_path = temp_dir.join(installer_filename);
 
     std::fs::write(&installer_path, &bytes)
         .map_err(|e| format!("Failed to save installer: {}", e))?;
@@ -101,36 +114,45 @@ pub async fn download_and_install_update(
             .map_err(|e| format!("Failed to set executable permissions: {}", e))?;
     }
 
-    // Run the installer
+    // Run the installer based on format
     println!("Running installer...");
 
-    let install_result = if cfg!(target_os = "macos") {
-        if installer_path.extension().and_then(|s| s.to_str()) == Some("dmg") {
-            // For DMG files, we need to mount and copy the app
-            // This is a simplified version - in production you'd want more robust handling
-            Command::new("hdiutil")
-                .args(["attach", installer_path.to_str().unwrap()])
+    let install_result = match installer_format.as_str() {
+        "msi" => {
+            // Windows MSI installer
+            Command::new("msiexec")
+                .args([
+                    "/i",
+                    &installer_path.to_string_lossy(),
+                    "/quiet",
+                    "/norestart",
+                ])
                 .status()
-                .map_err(|e| format!("Failed to mount DMG: {}", e))?;
-
-            // For now, just return success - proper DMG handling would be more complex
-            Ok(std::process::ExitStatus::default())
-        } else {
-            // Assume it's an app bundle that can be run directly
+                .map_err(|e| format!("Failed to run MSI installer: {}", e))
+        }
+        "dmg" => {
+            // macOS DMG installer
+            install_from_dmg(&installer_path)
+        }
+        "AppImage" => {
+            // Linux AppImage - just make it executable and run
             Command::new(&installer_path)
                 .status()
-                .map_err(|e| format!("Failed to run installer: {}", e))
+                .map_err(|e| format!("Failed to run AppImage: {}", e))
         }
-    } else if cfg!(target_os = "windows") {
-        Command::new(&installer_path)
-            .args(["/S"]) // Silent install
-            .status()
-            .map_err(|e| format!("Failed to run installer: {}", e))
-    } else {
-        // Linux - assume AppImage or similar
-        Command::new(&installer_path)
-            .status()
-            .map_err(|e| format!("Failed to run installer: {}", e))
+        "deb" => {
+            // Linux DEB package
+            Command::new("sudo")
+                .args(["dpkg", "-i", &installer_path.to_string_lossy()])
+                .status()
+                .map_err(|e| format!("Failed to install DEB package: {}", e))
+        }
+        _ => {
+            return Err(format!(
+                "Unsupported installer format: {}",
+                installer_format
+            ));
+        }
     };
 
     match install_result {
@@ -144,6 +166,108 @@ pub async fn download_and_install_update(
         )),
         Err(e) => Err(format!("Failed to run installer: {}", e)),
     }
+}
+
+fn install_from_dmg(dmg_path: &std::path::Path) -> Result<std::process::ExitStatus, String> {
+    use std::process::Command;
+
+    // Create a temporary mount point
+    let mount_point = std::env::temp_dir().join("fm-skin-builder-mount");
+    if mount_point.exists() {
+        std::fs::remove_dir_all(&mount_point)
+            .map_err(|e| format!("Failed to clean mount point: {}", e))?;
+    }
+    std::fs::create_dir_all(&mount_point)
+        .map_err(|e| format!("Failed to create mount point: {}", e))?;
+
+    // Mount the DMG
+    let mount_result = Command::new("hdiutil")
+        .args([
+            "attach",
+            &dmg_path.to_string_lossy(),
+            "-mountpoint",
+            &mount_point.to_string_lossy(),
+            "-nobrowse",
+        ])
+        .status()
+        .map_err(|e| format!("Failed to mount DMG: {}", e))?;
+
+    if !mount_result.success() {
+        return Err("Failed to mount DMG".to_string());
+    }
+
+    // Find the .app bundle in the mounted volume
+    let app_entries = std::fs::read_dir(&mount_point)
+        .map_err(|e| format!("Failed to read mount point: {}", e))?
+        .filter_map(|entry| entry.ok())
+        .filter(|entry| entry.path().extension().and_then(|ext| ext.to_str()) == Some("app"))
+        .collect::<Vec<_>>();
+
+    if app_entries.is_empty() {
+        // Try to unmount first
+        let _ = Command::new("hdiutil")
+            .args(["detach", &mount_point.to_string_lossy()])
+            .status();
+        return Err("No .app bundle found in DMG".to_string());
+    }
+
+    let app_path = app_entries[0].path();
+    let app_name = app_path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .ok_or_else(|| "Invalid app name".to_string())?;
+
+    // Copy to Applications folder
+    let applications_dir = std::path::PathBuf::from("/Applications");
+    let target_path = applications_dir.join(app_name);
+
+    // Remove existing app if it exists
+    if target_path.exists() {
+        std::fs::remove_dir_all(&target_path)
+            .map_err(|e| format!("Failed to remove existing app: {}", e))?;
+    }
+
+    // Copy the new app
+    copy_dir_recursive(&app_path, &target_path)
+        .map_err(|e| format!("Failed to copy app: {}", e))?;
+
+    // Unmount the DMG
+    let unmount_result = Command::new("hdiutil")
+        .args(["detach", &mount_point.to_string_lossy()])
+        .status();
+
+    // Clean up mount point
+    let _ = std::fs::remove_dir_all(&mount_point);
+
+    match unmount_result {
+        Ok(status) if status.success() => Ok(std::process::ExitStatus::default()),
+        _ => Err("Failed to unmount DMG".to_string()),
+    }
+}
+
+fn copy_dir_recursive(src: &std::path::Path, dst: &std::path::Path) -> Result<(), String> {
+    if src.is_dir() {
+        std::fs::create_dir_all(dst).map_err(|e| format!("Failed to create directory: {}", e))?;
+
+        for entry in
+            std::fs::read_dir(src).map_err(|e| format!("Failed to read directory: {}", e))?
+        {
+            let entry = entry.map_err(|e| format!("Failed to read entry: {}", e))?;
+            let src_path = entry.path();
+            let dst_path = dst.join(entry.file_name());
+
+            if src_path.is_dir() {
+                copy_dir_recursive(&src_path, &dst_path)?;
+            } else {
+                std::fs::copy(&src_path, &dst_path)
+                    .map_err(|e| format!("Failed to copy file: {}", e))?;
+            }
+        }
+    } else {
+        std::fs::copy(src, dst).map_err(|e| format!("Failed to copy file: {}", e))?;
+    }
+
+    Ok(())
 }
 
 #[tauri::command]
