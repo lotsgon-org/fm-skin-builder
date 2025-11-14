@@ -546,6 +546,14 @@ def _format_uss_value(
     elif value_type == 2:  # Float/Dimension
         if 0 <= value_index < len(floats):
             val_float = floats[value_index]
+            # Check if this is a unitless property (like opacity, z-index, etc.)
+            unitless_properties = {'opacity', 'z-index', 'flex-grow', 'flex-shrink', 'order'}
+            if prop_name and prop_name.lower() in unitless_properties:
+                # Unitless properties should not have px suffix
+                if val_float == int(val_float):
+                    return f"{int(val_float)}"
+                else:
+                    return f"{val_float:.2f}"
             # Unity stores dimensions as floats (pixels)
             if val_float == int(val_float):
                 return f"{int(val_float)}px"
