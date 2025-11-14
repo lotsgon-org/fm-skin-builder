@@ -90,9 +90,76 @@ def _build_unity_color(
     return color
 
 
+def _infer_property_type_from_name(prop_name: str) -> Optional[int]:
+    """
+    Infer the Unity StyleSheet value type from the property name.
+
+    Returns the expected Unity type (1=keyword, 2=float, 4=color, 7=resource, 8=enum)
+    or None if the type cannot be inferred from the name.
+
+    This helps handle cases where a variable's value may be ambiguous but the
+    naming convention indicates the intended type.
+    """
+    prop_lower = prop_name.lower()
+
+    # Padding/margin/spacing properties should be floats
+    if any(
+        keyword in prop_lower
+        for keyword in ["padding", "margin", "spacing", "gap", "offset"]
+    ):
+        return 2  # Float
+
+    # Border radius properties should be floats
+    if "radius" in prop_lower:
+        return 2  # Float
+
+    # Size/dimension properties should be floats
+    if any(
+        keyword in prop_lower
+        for keyword in ["width", "height", "size", "thickness", "weight"]
+    ):
+        return 2  # Float
+
+    # Color-related properties should be colors
+    if any(
+        keyword in prop_lower
+        for keyword in [
+            "color",
+            "colour",
+            "background",
+            "foreground",
+            "border-color",
+            "tint",
+        ]
+    ):
+        # Exception: border-width, border-radius, etc. are not colors
+        if not any(
+            keyword in prop_lower for keyword in ["width", "radius", "thickness"]
+        ):
+            return 4  # Color
+
+    # Font properties should be resources
+    if "font" in prop_lower and "size" not in prop_lower:
+        return 7  # Resource
+
+    # Direction/alignment properties should be keywords
+    if any(
+        keyword in prop_lower
+        for keyword in ["direction", "align", "justify", "display", "position"]
+    ):
+        return 1  # Keyword/Enum
+
+    return None
+
+
 def _is_color_property(prop_name: str, value: Any) -> bool:
     """Check if a property should be treated as a color."""
-    # Check if it's a color value (hex string)
+    # First check if the property name suggests it's a color
+    inferred_type = _infer_property_type_from_name(prop_name)
+    if inferred_type is not None:
+        return inferred_type == 4
+
+    # Otherwise check if it's a color value (hex string)
     if isinstance(value, str):
         return normalize_css_color(value) is not None
     return False
@@ -108,6 +175,9 @@ def _patch_float_property(
     """
     Patch a float property value.
 
+    For shorthand properties (border-radius, padding, margin), a single value
+    will be expanded to all related values (e.g., all 4 corners for border-radius).
+
     Returns (changed, patched_index) tuple.
     """
     parsed = parse_float_value(value_str)
@@ -121,19 +191,67 @@ def _patch_float_property(
 
     values = list(getattr(prop, "m_Values", []))
 
-    # Try to find existing Type 2 (float) value
-    for val in values:
-        if getattr(val, "m_ValueType", None) == 2:
-            value_index = getattr(val, "valueIndex", None)
+    # Check if this is a shorthand property that should expand to multiple values
+    is_shorthand = prop_name in {"border-radius", "padding", "margin", "border-width"}
+
+    # Get all existing Type 2 (float) values
+    float_values = [
+        (val, getattr(val, "valueIndex", None))
+        for val in values
+        if getattr(val, "m_ValueType", None) == 2
+    ]
+
+    # Get all variable references (Type 3 or 10) that should be converted to floats for shorthand
+    var_references = [
+        val
+        for val in values
+        if getattr(val, "m_ValueType", None) in {3, 10}
+    ] if is_shorthand else []
+
+    if is_shorthand and (len(float_values) > 1 or var_references):
+        # Shorthand property with multiple values - update all of them
+        changed = False
+
+        # Update existing float values
+        for val, value_index in float_values:
             if value_index is not None and 0 <= value_index < len(floats):
                 old_value = floats[value_index]
-                if abs(old_value - float_value) < 1e-6:  # No change
-                    return False, value_index
-                floats[value_index] = float_value
-                log.info(
-                    f"  [PATCHED - float] {name}: {prop_name} (index {value_index}): {old_value} → {float_value}"
-                )
-                return True, value_index
+                if abs(old_value - float_value) >= 1e-6:  # Value differs
+                    floats[value_index] = float_value
+                    log.info(
+                        f"  [PATCHED - float shorthand] {name}: {prop_name} (index {value_index}): {old_value} → {float_value}"
+                    )
+                    changed = True
+
+        # Convert variable references to float values
+        for val in var_references:
+            old_type = getattr(val, "m_ValueType", None)
+            old_index = getattr(val, "valueIndex", None)
+
+            floats.append(float_value)
+            new_index = len(floats) - 1
+
+            setattr(val, "m_ValueType", 2)
+            setattr(val, "valueIndex", new_index)
+            log.info(
+                f"  [PATCHED - float shorthand convert] {name}: {prop_name} (was type {old_type} index {old_index}) → {float_value} (new float index {new_index})"
+            )
+            changed = True
+
+        # Return the first index if we made changes
+        return changed, float_values[0][1] if changed and float_values else (new_index if var_references else None)
+    elif float_values:
+        # Single value property or shorthand with only one value - update the first one
+        val, value_index = float_values[0]
+        if value_index is not None and 0 <= value_index < len(floats):
+            old_value = floats[value_index]
+            if abs(old_value - float_value) < 1e-6:  # No change
+                return False, value_index
+            floats[value_index] = float_value
+            log.info(
+                f"  [PATCHED - float] {name}: {prop_name} (index {value_index}): {old_value} → {float_value}"
+            )
+            return True, value_index
 
     # No existing float value, create new one
     floats.append(float_value)
@@ -864,7 +982,32 @@ class CssPatcher:
                     else:
                         # Try to patch as non-color property (float, keyword, resource)
                         prop_type = PROPERTY_TYPE_MAP.get(prop_name)
-                        if prop_type:
+
+                        # For CSS custom properties (--variables), infer the type if not in map
+                        if not prop_type and prop_name.startswith("--"):
+                            inferred_type = _infer_property_type_from_name(prop_name)
+                            if inferred_type == 2:  # Float
+                                prop_changed, index = _patch_float_property(
+                                    data, prop, prop_name, value_str, name
+                                )
+                                if prop_changed:
+                                    patched_vars += 1
+                                    changed = True
+                            elif inferred_type == 1 or inferred_type == 8:  # Keyword
+                                prop_changed, index = _patch_keyword_property(
+                                    data, prop, prop_name, value_str, name
+                                )
+                                if prop_changed:
+                                    patched_vars += 1
+                                    changed = True
+                            elif inferred_type == 7:  # Resource
+                                prop_changed, index = _patch_resource_property(
+                                    data, prop, prop_name, value_str, name
+                                )
+                                if prop_changed:
+                                    patched_vars += 1
+                                    changed = True
+                        elif prop_type:
                             # Determine which type to use based on property definition
                             # patched = False
                             if 2 in prop_type.unity_types:  # Float
@@ -1728,21 +1871,115 @@ class CssPatcher:
                 setattr(value_obj, "m_Column", 0)
 
             # Detect value type and add to appropriate array
-            if _is_color_property(var_name, value_str):
-                # Color value
-                r, g, b, a = hex_to_rgba(value_str)
-                new_color = _build_unity_color(colors, r, g, b, a)
-                colors.append(new_color)
-                value_index = len(colors) - 1
+            # First try to infer type from property name for better type detection
+            inferred_type = _infer_property_type_from_name(var_name)
 
-                setattr(value_obj, "m_ValueType", 4)
+            # Check if it's a variable reference (var(--name))
+            parsed_var = parse_variable_value(value_str)
+            if parsed_var is not None:
+                # Variable reference - store as Type 10
+                var_ref_name = parsed_var.unity_variable_name
+                strings.append(var_ref_name)
+                value_index = len(strings) - 1
+
+                setattr(value_obj, "m_ValueType", 10)
                 setattr(value_obj, "valueIndex", value_index)
                 log.info(
-                    f"  [NEW VAR - color] {stylesheet_name}: {var_name} → {value_str} (color index {value_index})"
+                    f"  [NEW VAR - reference] {stylesheet_name}: {var_name} → {value_str} (string index {value_index})"
                 )
 
+            elif inferred_type == 2:
+                # Inferred as float from name (e.g., padding, radius)
+                parsed_float = parse_float_value(value_str)
+                if parsed_float is not None:
+                    floats.append(parsed_float.unity_value)
+                    value_index = len(floats) - 1
+
+                    setattr(value_obj, "m_ValueType", 2)
+                    setattr(value_obj, "valueIndex", value_index)
+                    log.info(
+                        f"  [NEW VAR - float (inferred)] {stylesheet_name}: {var_name} → {parsed_float.unity_value} (float index {value_index})"
+                    )
+                else:
+                    # Couldn't parse as float, fall back to string
+                    strings.append(value_str)
+                    value_index = len(strings) - 1
+                    setattr(value_obj, "m_ValueType", 8)
+                    setattr(value_obj, "valueIndex", value_index)
+                    log.warning(
+                        f"  [NEW VAR - string (fallback)] {stylesheet_name}: {var_name} → {value_str}"
+                    )
+
+            elif inferred_type == 4 or _is_color_property(var_name, value_str):
+                # Inferred as color from name or value
+                normalized_color = normalize_css_color(value_str)
+                if normalized_color:
+                    r, g, b, a = hex_to_rgba(normalized_color)
+                    new_color = _build_unity_color(colors, r, g, b, a)
+                    colors.append(new_color)
+                    value_index = len(colors) - 1
+
+                    setattr(value_obj, "m_ValueType", 4)
+                    setattr(value_obj, "valueIndex", value_index)
+                    log.info(
+                        f"  [NEW VAR - color] {stylesheet_name}: {var_name} → {value_str} (color index {value_index})"
+                    )
+                else:
+                    # Couldn't parse as color, fall back to string
+                    strings.append(value_str)
+                    value_index = len(strings) - 1
+                    setattr(value_obj, "m_ValueType", 8)
+                    setattr(value_obj, "valueIndex", value_index)
+                    log.warning(
+                        f"  [NEW VAR - string (fallback)] {stylesheet_name}: {var_name} → {value_str}"
+                    )
+
+            elif inferred_type == 1 or inferred_type == 8:
+                # Inferred as keyword from name
+                parsed_keyword = parse_keyword_value(value_str)
+                if parsed_keyword is not None:
+                    strings.append(parsed_keyword.keyword)
+                    value_index = len(strings) - 1
+
+                    setattr(value_obj, "m_ValueType", 8)
+                    setattr(value_obj, "valueIndex", value_index)
+                    log.info(
+                        f"  [NEW VAR - keyword (inferred)] {stylesheet_name}: {var_name} → {parsed_keyword.keyword} (string index {value_index})"
+                    )
+                else:
+                    # Couldn't parse as keyword, fall back to string
+                    strings.append(value_str)
+                    value_index = len(strings) - 1
+                    setattr(value_obj, "m_ValueType", 8)
+                    setattr(value_obj, "valueIndex", value_index)
+                    log.warning(
+                        f"  [NEW VAR - string (fallback)] {stylesheet_name}: {var_name} → {value_str}"
+                    )
+
+            elif inferred_type == 7:
+                # Inferred as resource from name
+                parsed_resource = parse_resource_value(value_str)
+                if parsed_resource is not None:
+                    strings.append(parsed_resource.unity_path)
+                    value_index = len(strings) - 1
+
+                    setattr(value_obj, "m_ValueType", 7)
+                    setattr(value_obj, "valueIndex", value_index)
+                    log.info(
+                        f"  [NEW VAR - resource (inferred)] {stylesheet_name}: {var_name} → {parsed_resource.unity_path} (string index {value_index})"
+                    )
+                else:
+                    # Couldn't parse as resource, fall back to string
+                    strings.append(value_str)
+                    value_index = len(strings) - 1
+                    setattr(value_obj, "m_ValueType", 8)
+                    setattr(value_obj, "valueIndex", value_index)
+                    log.warning(
+                        f"  [NEW VAR - string (fallback)] {stylesheet_name}: {var_name} → {value_str}"
+                    )
+
             elif (parsed_float := parse_float_value(value_str)) is not None:
-                # Float value
+                # No type inferred, but value parses as float
                 floats.append(parsed_float.unity_value)
                 value_index = len(floats) - 1
 
@@ -1753,7 +1990,7 @@ class CssPatcher:
                 )
 
             elif (parsed_keyword := parse_keyword_value(value_str)) is not None:
-                # Keyword value
+                # Value parses as keyword
                 strings.append(parsed_keyword.keyword)
                 value_index = len(strings) - 1
 
@@ -1764,7 +2001,7 @@ class CssPatcher:
                 )
 
             elif (parsed_resource := parse_resource_value(value_str)) is not None:
-                # Resource value
+                # Value parses as resource
                 strings.append(parsed_resource.unity_path)
                 value_index = len(strings) - 1
 
@@ -1908,20 +2145,8 @@ class CssPatcher:
                     setattr(value_obj, "m_Column", 0)
 
                 # Detect value type and add to appropriate array
-                if _is_color_property(prop_name, value_str):
-                    # Color value
-                    r, g, b, a = hex_to_rgba(value_str)
-                    new_color = _build_unity_color(colors, r, g, b, a)
-                    colors.append(new_color)
-                    value_index = len(colors) - 1
-
-                    setattr(value_obj, "m_ValueType", 4)
-                    setattr(value_obj, "valueIndex", value_index)
-                    log.info(
-                        f"  [NEW SELECTOR - color] {stylesheet_name}: {selector_text} {{ {prop_name}: {value_str}; }}"
-                    )
-
-                elif (parsed_var := parse_variable_value(value_str)) is not None:
+                # Check for variable reference first (before color check)
+                if (parsed_var := parse_variable_value(value_str)) is not None:
                     # Variable reference (var(--name))
                     # Store the variable name in strings array and create Type 10 reference
                     var_name = parsed_var.unity_variable_name
@@ -1932,6 +2157,19 @@ class CssPatcher:
                     setattr(value_obj, "valueIndex", value_index)
                     log.info(
                         f"  [NEW SELECTOR - variable] {stylesheet_name}: {selector_text} {{ {prop_name}: {value_str}; }}"
+                    )
+
+                elif _is_color_property(prop_name, value_str):
+                    # Color value
+                    r, g, b, a = hex_to_rgba(value_str)
+                    new_color = _build_unity_color(colors, r, g, b, a)
+                    colors.append(new_color)
+                    value_index = len(colors) - 1
+
+                    setattr(value_obj, "m_ValueType", 4)
+                    setattr(value_obj, "valueIndex", value_index)
+                    log.info(
+                        f"  [NEW SELECTOR - color] {stylesheet_name}: {selector_text} {{ {prop_name}: {value_str}; }}"
                     )
 
                 elif (parsed_float := parse_float_value(value_str)) is not None:

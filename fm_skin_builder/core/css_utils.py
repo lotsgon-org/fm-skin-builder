@@ -161,11 +161,27 @@ def load_css_properties(path: Path) -> Dict[str, Any]:
     Returns a dictionary mapping variable names to their values (as strings).
     Values can be colors, floats, keywords, etc.
     """
+    # Properties that should be excluded from CSS variable extraction
+    # These are typically SVG/XML attributes that use -- prefix but aren't CSS custom properties
+    EXCLUDED_PROPERTIES = {
+        "--start-colour",
+        "--end-colour",
+        "--start-color",
+        "--end-color",
+    }
+
     text = path.read_text(encoding="utf-8")
     matches = re.findall(r"--([\w-]+)\s*:\s*([^;]+);", text)
     properties: Dict[str, Any] = {}
 
     for name, value in matches:
+        var_name = f"--{name}"
+
+        # Skip excluded properties (e.g., SVG gradient attributes)
+        if var_name in EXCLUDED_PROPERTIES:
+            log.debug(f"Skipping excluded property {var_name} in {path}")
+            continue
+
         value = value.strip()
         if not value:
             continue
@@ -173,11 +189,11 @@ def load_css_properties(path: Path) -> Dict[str, Any]:
         # First try to normalize as color (for backwards compatibility)
         normalised_color = normalize_css_color(value)
         if normalised_color:
-            properties[f"--{name}"] = normalised_color
+            properties[var_name] = normalised_color
         else:
             # Store the raw value for non-color properties
             # The value will be parsed later based on property context
-            properties[f"--{name}"] = value
+            properties[var_name] = value
 
     log.info("🎨 Loaded %s CSS properties from %s", len(properties), path)
     return properties
@@ -189,6 +205,14 @@ def load_css_selector_properties(path: Path) -> Dict[Tuple[str, str], Any]:
 
     Returns a dictionary mapping (selector, property) tuples to their values.
     """
+    # Properties that should be excluded (e.g., SVG gradient attributes)
+    EXCLUDED_PROPERTIES = {
+        "--start-colour",
+        "--end-colour",
+        "--start-color",
+        "--end-color",
+    }
+
     text = path.read_text(encoding="utf-8")
     selector_blocks = re.findall(r"(\.[\w-]+)\s*\{([^}]*)\}", text)
     selector_props: Dict[Tuple[str, str], Any] = {}
@@ -199,6 +223,13 @@ def load_css_selector_properties(path: Path) -> Dict[Tuple[str, str], Any]:
             block,
         )
         for prop, value in props:
+            prop = prop.strip()
+
+            # Skip excluded properties (e.g., SVG gradient attributes)
+            if prop in EXCLUDED_PROPERTIES:
+                log.debug(f"Skipping excluded property {prop} in selector {selector}")
+                continue
+
             value = value.strip()
             if not value:
                 continue
@@ -211,9 +242,9 @@ def load_css_selector_properties(path: Path) -> Dict[Tuple[str, str], Any]:
                 # Store raw value for non-color properties
                 value_to_store = value
 
-            key = (selector.strip(), prop.strip())
+            key = (selector.strip(), prop)
             selector_props[key] = value_to_store
-            selector_props[(key[0].lstrip("."), key[1])] = value_to_store
+            selector_props[(key[0].lstrip("."), prop)] = value_to_store
 
     return selector_props
 
