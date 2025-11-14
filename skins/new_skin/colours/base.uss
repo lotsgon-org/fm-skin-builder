@@ -258,11 +258,23 @@
 
   --my-custom-colour: #172ad0;
 
+  --global-radius-extra-small: 10px;
+
   .green {
     color: var(--my-custom-colour);
   }
 
   .test-class {
     background-color: var(--my-custom-colour);
+  }
+
+  .calendar-day-block {
+    border-radius: 10px;
+  }
+
+  .calendar-day-current {
+    background-color: rgba(175, 120, 255, 0.08);
+    --end-colour: rgba(219, 230, 2, 0.785);
+    --start-colour: #08e708;
   }
 }
