@@ -348,8 +348,10 @@ class CssPatcher:
 
         Returns:
             (selector_registry, variable_registry) where:
-            - selector_registry: {".green": ["FigmaStyleVariables", "OtherSheet"], ...}
-            - variable_registry: {"--primary-color": ["FigmaStyleVariables"], ...}
+            - selector_registry: {".green": ["figmastylevariables", "othersheet"], ...}
+            - variable_registry: {"--primary-color": ["figmastylevariables"], ...}
+
+        Note: Stylesheet names are stored in lowercase for case-insensitive comparison.
         """
         from collections import defaultdict
 
@@ -357,6 +359,9 @@ class CssPatcher:
         variable_registry: DefaultDict[str, List[str]] = defaultdict(list)
 
         for data, name in stylesheets:
+            # Normalize name to lowercase for case-insensitive comparison
+            name_lower = name.lower()
+
             # Extract all selectors from complex selectors
             complex_selectors = getattr(data, "m_ComplexSelectors", [])
             for sel in complex_selectors:
@@ -365,8 +370,8 @@ class CssPatcher:
                         parts = getattr(s, "m_Parts", [])
                         if parts:
                             selector_text = build_selector_from_parts(parts)
-                            if selector_text and selector_text not in selector_registry[selector_text]:
-                                selector_registry[selector_text].append(name)
+                            if selector_text and name_lower not in selector_registry[selector_text]:
+                                selector_registry[selector_text].append(name_lower)
 
             # Extract all variables from rules
             rules = getattr(data, "m_Rules", [])
@@ -374,8 +379,8 @@ class CssPatcher:
                 for prop in getattr(rule, "m_Properties", []):
                     prop_name = getattr(prop, "m_Name", "")
                     if prop_name.startswith("--"):
-                        if name not in variable_registry[prop_name]:
-                            variable_registry[prop_name].append(name)
+                        if name_lower not in variable_registry[prop_name]:
+                            variable_registry[prop_name].append(name_lower)
 
         return dict(selector_registry), dict(variable_registry)
 
@@ -1280,10 +1285,11 @@ class CssPatcher:
             # Option 3: Smart Update Mode with Global Registry
             # Check if variables exist in other stylesheets (global registry)
             registry = getattr(self, "_global_variable_registry", {})
+            name_lower = name.lower()
             vars_in_other_files = {
                 var: registry[var]
                 for var in unmatched_vars
-                if var in registry and name not in registry[var]
+                if var in registry and name_lower not in registry[var]
             }
 
             # Filter out variables that exist elsewhere (they'll be updated there)
@@ -1293,7 +1299,6 @@ class CssPatcher:
                 # Smart placement: Only add new variables if:
                 # 1. This stylesheet has explicit targeting (has_targeted_sources), OR
                 # 2. This stylesheet is the primary variable stylesheet
-                name_lower = name.lower()
                 should_add_vars = has_targeted_sources or (name_lower == self.primary_variable_stylesheet)
 
                 if should_add_vars:
@@ -1354,11 +1359,12 @@ class CssPatcher:
             # Option 3: Smart Update Mode with Global Registry
             # Check if selectors exist in other stylesheets (global registry)
             registry = getattr(self, "_global_selector_registry", {})
+            name_lower = name.lower()
             selectors_in_other_files = {}
             filtered_new_selectors = set()
 
             for sel, prop in truly_new_selectors:
-                if sel in registry and name not in registry[sel]:
+                if sel in registry and name_lower not in registry[sel]:
                     # Selector exists in other file(s), will be updated there
                     selectors_in_other_files[sel] = registry[sel]
                 else:
@@ -1369,7 +1375,6 @@ class CssPatcher:
                 # Smart placement: Only add new selectors if:
                 # 1. This stylesheet has explicit targeting (has_targeted_sources), OR
                 # 2. This stylesheet is the primary selector stylesheet
-                name_lower = name.lower()
                 should_add_selectors = has_targeted_sources or (name_lower == self.primary_selector_stylesheet)
 
                 if should_add_selectors:
@@ -1500,9 +1505,12 @@ class CssPatcher:
                 setattr(prop, "m_Name", var_name)
                 setattr(prop, "m_Values", [])
             else:
+                # Create minimal property object with required Unity fields
                 prop = SimpleNamespace()
                 setattr(prop, "m_Name", var_name)
                 setattr(prop, "m_Values", [])
+                setattr(prop, "m_Line", -1)
+                setattr(prop, "m_Column", 0)
 
             values_list = getattr(prop, "m_Values")
 
@@ -1667,9 +1675,12 @@ class CssPatcher:
                     setattr(prop, "m_Name", prop_name)
                     setattr(prop, "m_Values", [])
                 else:
+                    # Create minimal property object with required Unity fields
                     prop = SimpleNamespace()
                     setattr(prop, "m_Name", prop_name)
                     setattr(prop, "m_Values", [])
+                    setattr(prop, "m_Line", -1)
+                    setattr(prop, "m_Column", 0)
 
                 values_list = getattr(prop, "m_Values")
 
