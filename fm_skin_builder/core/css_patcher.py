@@ -1186,8 +1186,58 @@ class CssPatcher:
                                 f"  [DEBUG] Selector/property match: {key} in {name}, patching to {value_str}"
                             )
 
+                            # Check if it's a variable reference first
+                            parsed_var = parse_variable_value(value_str)
+                            if parsed_var is not None:
+                                # Variable reference (var(--name))
+                                var_name = parsed_var.unity_variable_name
+                                values = list(getattr(prop, "m_Values", []))
+
+                                # Find or add the variable name to strings array
+                                if var_name not in strings:
+                                    strings.append(var_name)
+                                var_index = strings.index(var_name)
+
+                                # Update the first value to Type 10 (variable reference)
+                                if values:
+                                    val = values[0]
+                                    old_type = getattr(val, "m_ValueType", None)
+                                    old_index = getattr(val, "valueIndex", None)
+
+                                    setattr(val, "m_ValueType", 10)
+                                    setattr(val, "valueIndex", var_index)
+
+                                    patched_vars += 1
+                                    changed = True
+                                    log.info(
+                                        f"  [PATCHED - selector/property variable] {name}: {key} → {value_str} (was type {old_type} index {old_index})"
+                                    )
+
+                                    try:
+                                        touches = getattr(
+                                            self, "_selector_touches", None
+                                        )
+                                        if touches is not None:
+                                            norm_sel = key[0]
+                                            touches.setdefault(
+                                                (
+                                                    (
+                                                        norm_sel
+                                                        if norm_sel.startswith(".")
+                                                        else norm_sel
+                                                    ),
+                                                    prop_name,
+                                                ),
+                                                set(),
+                                            ).add(name)
+                                    except Exception:
+                                        pass
+                                else:
+                                    log.warning(
+                                        f"  [WARN] No values found for {key} in {name}, cannot patch to variable"
+                                    )
                             # Check if it's a color property
-                            if _is_color_property(prop_name, value_str):
+                            elif _is_color_property(prop_name, value_str):
                                 # Handle color property (existing logic)
                                 values = list(getattr(prop, "m_Values", []))
                                 r, g, b, a = hex_to_rgba(value_str)
@@ -1615,6 +1665,18 @@ class CssPatcher:
             properties = []
             setattr(root_rule, "m_Properties", properties)
 
+        # Calculate the next m_Line value for new properties
+        # Find the highest m_Line in existing properties
+        next_line = None
+        if properties:
+            max_line = max(
+                (getattr(p, "m_Line", None) for p in properties),
+                key=lambda x: x if x is not None else -1,
+                default=None
+            )
+            if max_line is not None and max_line >= 0:
+                next_line = max_line + 1
+
         created_count = 0
         for var_name in sorted(unmatched_vars):  # Sort for consistent ordering
             value_str = css_vars[var_name]
@@ -1627,6 +1689,10 @@ class CssPatcher:
                 prop = copy.copy(properties[0])
                 setattr(prop, "m_Name", var_name)
                 setattr(prop, "m_Values", [])
+                # Set the next sequential m_Line value
+                if next_line is not None:
+                    setattr(prop, "m_Line", next_line)
+                    next_line += 1  # Increment for next property
             else:
                 # Create minimal property object with required Unity fields
                 prop = SimpleNamespace()

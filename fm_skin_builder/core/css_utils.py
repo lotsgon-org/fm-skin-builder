@@ -532,10 +532,19 @@ def _format_uss_value(
                 return f"{val_float:.2f}px"
         return None
 
-    elif value_type == 3:  # Dimension string (like "10px", "50%", "auto")
+    elif value_type == 3:  # Dimension string (like "10px", "50%", "auto") OR enum
         if 0 <= value_index < len(strings):
-            return strings[value_index]
-        return None
+            value = strings[value_index]
+            # If the string looks like a CSS variable name, this is likely a corrupt enum
+            # pointing to an index that was filled later - treat as integer
+            if value and value.startswith('--'):
+                return str(value_index)
+            # If it's a project:// or resource:// URL, quote it for readability
+            if value and (value.startswith('project://') or value.startswith('resource://')):
+                return f'"{value}"'
+            return value
+        # If index is out of bounds, treat it as an integer enum value
+        return str(value_index)
 
     elif value_type == 4:  # Color
         if 0 <= value_index < len(colors):
