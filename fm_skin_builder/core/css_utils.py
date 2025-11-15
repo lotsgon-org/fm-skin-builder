@@ -243,19 +243,19 @@ def hex_to_rgba(hex_color: str) -> tuple[float, float, float, float]:
     """Convert hex color to RGBA tuple with validation."""
     if not isinstance(hex_color, str):
         raise ValueError(f"Expected string, got {type(hex_color)}")
-    
-    if hex_color.startswith('#'):
+
+    if hex_color.startswith("#"):
         s = hex_color[1:]
     else:
         s = hex_color
-    
+
     if len(s) not in (6, 8):
         raise ValueError(f"Invalid hex length {len(s)} for {hex_color}")
-    
+
     # Validate all characters are valid hex
-    if not all(c in '0123456789abcdefABCDEF' for c in s):
+    if not all(c in "0123456789abcdefABCDEF" for c in s):
         raise ValueError(f"Invalid hex characters in {hex_color}")
-    
+
     try:
         if len(s) == 6:
             r = int(s[0:2], 16) / 255.0
@@ -269,7 +269,7 @@ def hex_to_rgba(hex_color: str) -> tuple[float, float, float, float]:
             a = int(s[6:8], 16) / 255.0
     except ValueError as e:
         raise ValueError(f"Failed to parse hex color {hex_color}: {e}")
-    
+
     return r, g, b, a
 
 
@@ -317,6 +317,7 @@ def serialize_stylesheet_to_uss(
     strings = getattr(data, "strings", [])
     colors = getattr(data, "colors", [])
     floats = getattr(data, "floats", []) if hasattr(data, "floats") else []
+    dimensions = getattr(data, "dimensions", []) if hasattr(data, "dimensions") else []
     rules = getattr(data, "m_Rules", [])
     selectors = (
         getattr(data, "m_ComplexSelectors", [])
@@ -390,46 +391,65 @@ def serialize_stylesheet_to_uss(
             values = list(getattr(prop, "m_Values", []))
 
             # Unity's triplet encoding: [Type10=1, Type2=1.0, Type8=var_name] → var(--var_name)
-            # This is how Unity internally stores CSS variable references in binary format
-            if (len(values) == 3 and
-                getattr(values[0], "m_ValueType", None) == 10 and
-                getattr(values[0], "valueIndex", None) == 1 and
-                getattr(values[1], "m_ValueType", None) == 2 and
-                getattr(values[2], "m_ValueType", None) == 8):
+            # Triplets can appear ANYWHERE in the values list, not just when len==3
+            # We need to scan through and detect triplet patterns, then process remaining values
 
-                # Check if Type 2 is 1.0 (the sentinel value)
-                type2_idx = getattr(values[1], "valueIndex", None)
-                if type2_idx is not None and 0 <= type2_idx < len(floats):
-                    if floats[type2_idx] == 1.0:
+            processed_values = []
+            i = 0
+            while i < len(values):
+                # Check if we have a triplet pattern starting at position i
+                if (
+                    i + 2 < len(values)
+                    and getattr(values[i], "m_ValueType", None) == 10
+                    and getattr(values[i], "valueIndex", None) == 1
+                    and getattr(values[i + 1], "m_ValueType", None) == 2
+                    and getattr(values[i + 2], "m_ValueType", None) == 8
+                ):
+                    # Check if Type 2 is 1.0 (the sentinel value)
+                    type2_idx = getattr(values[i + 1], "valueIndex", None)
+                    if (
+                        type2_idx is not None
+                        and 0 <= type2_idx < len(floats)
+                        and floats[type2_idx] == 1.0
+                    ):
                         # This is a triplet encoding for var(--variable)
-                        type8_idx = getattr(values[2], "valueIndex", None)
+                        type8_idx = getattr(values[i + 2], "valueIndex", None)
                         if type8_idx is not None and 0 <= type8_idx < len(strings):
                             var_name = strings[type8_idx]
                             # Ensure variable name has -- prefix
                             if not var_name.startswith("--"):
                                 var_name = f"--{var_name}"
-                            # Store as a single Type 10 value (variable reference)
-                            property_values[prop_name].append(
-                                (10, type8_idx, f"var({var_name})")
-                            )
+                            # Add the var() reference
+                            processed_values.append((10, type8_idx, f"var({var_name})"))
+                            # Skip the next 2 values (we consumed the triplet)
+                            i += 3
                             continue
 
-            for val in values:
-                value_type = getattr(val, "m_ValueType", None)
-                value_index = getattr(val, "valueIndex", None)
+                # Not a triplet, process this value normally
+                value_type = getattr(values[i], "m_ValueType", None)
+                value_index = getattr(values[i], "valueIndex", None)
 
-                if value_type is None or value_index is None:
-                    continue
-
-                # Format the value based on its type
-                formatted_value = _format_uss_value(
-                    value_type, value_index, strings, colors, floats, prop_name
-                )
-
-                if formatted_value:
-                    property_values[prop_name].append(
-                        (value_type, value_index, formatted_value)
+                if value_type is not None and value_index is not None:
+                    # Format the value based on its type
+                    formatted_value = _format_uss_value(
+                        value_type,
+                        value_index,
+                        strings,
+                        colors,
+                        floats,
+                        dimensions,
+                        prop_name,
                     )
+
+                    if formatted_value:
+                        processed_values.append(
+                            (value_type, value_index, formatted_value)
+                        )
+
+                i += 1
+
+            # Add all processed values for this property
+            property_values[prop_name].extend(processed_values)
 
         # Output each property once with the correct value(s)
         # Sort properties in a logical order if requested
@@ -571,6 +591,7 @@ def _format_uss_value(
     strings: List[str],
     colors: List[Any],
     floats: List[float],
+    dimensions: List[Any],
     prop_name: str,
 ) -> Optional[str]:
     """
@@ -584,14 +605,25 @@ def _format_uss_value(
     if value_type == 1:  # Keyword
         # Type 1 uses string index for keyword values
         if 0 <= value_index < len(strings):
-            return strings[value_index]
+            value = strings[value_index]
+            # If it's a CSS variable name, wrap it in var()
+            if value and value.startswith("--"):
+                return f"var({value})"
+            # Return the keyword as-is
+            return value
         return None
 
     elif value_type == 2:  # Float/Dimension
         if 0 <= value_index < len(floats):
             val_float = floats[value_index]
             # Check if this is a unitless property (like opacity, z-index, etc.)
-            unitless_properties = {'opacity', 'z-index', 'flex-grow', 'flex-shrink', 'order'}
+            unitless_properties = {
+                "opacity",
+                "z-index",
+                "flex-grow",
+                "flex-shrink",
+                "order",
+            }
             if prop_name and prop_name.lower() in unitless_properties:
                 # Unitless properties should not have px suffix
                 if val_float == int(val_float):
@@ -605,18 +637,61 @@ def _format_uss_value(
                 return f"{val_float:.2f}px"
         return None
 
-    elif value_type == 3:  # Dimension string (like "10px", "50%", "auto") OR enum
+    elif value_type == 3:  # Dimension - uses dimensions[] array!
+        # Type 3 points to the dimensions[] array, NOT strings[] array
+        # Each dimension has {unit, value} or object with .unit and .value attributes
+        if 0 <= value_index < len(dimensions):
+            dim = dimensions[value_index]
+
+            # Handle both dict and object formats
+            if hasattr(dim, "get"):
+                # It's a dict
+                value = dim.get("value", 0)
+                unit_val = dim.get("unit")
+            else:
+                # It's a UnityPy object
+                value = getattr(dim, "value", 0)
+                unit_val = getattr(dim, "unit", None)
+
+            # Unity USS unit enum values:
+            # 0 = Unitless/None
+            # 1 = Pixel (px)
+            # 2 = Percent (%)
+            # 3 = Em
+            # 4 = Rem
+            # etc.
+            unit_map = {
+                0: "",  # Unitless
+                1: "px",  # Pixel
+                2: "%",  # Percent
+                3: "em",  # Em
+                4: "rem",  # Rem
+            }
+
+            # Convert enum to string
+            if isinstance(unit_val, int):
+                unit = unit_map.get(unit_val, "px")  # Default to px if unknown
+            elif unit_val is None or unit_val == "":
+                unit = "px"  # Default to px
+            else:
+                unit = unit_val  # Already a string
+
+            # Format the dimension value
+            if value == int(value):
+                return f"{int(value)}{unit}"
+            else:
+                return f"{value}{unit}"
+
+        # Fallback: if index is out of bounds, check strings array
+        # (for backwards compatibility with older data)
         if 0 <= value_index < len(strings):
             value = strings[value_index]
-            # If the string looks like a CSS variable name, this is likely a corrupt enum
-            # pointing to an index that was filled later - treat as integer
-            if value and value.startswith('--'):
-                return str(value_index)
-            # If it's a project:// or resource:// URL, quote it for readability
-            if value and (value.startswith('project://') or value.startswith('resource://')):
+            if value and (
+                value.startswith("project://") or value.startswith("resource://")
+            ):
                 return f'"{value}"'
             return value
-        # If index is out of bounds, treat it as an integer enum value
+
         return str(value_index)
 
     elif value_type == 4:  # Color
@@ -652,6 +727,9 @@ def _format_uss_value(
                 value.startswith("project://") or value.startswith("resource://")
             ):
                 return f'"{value}"'
+            # If it's a CSS variable name, wrap it in var()
+            if value and value.startswith("--"):
+                return f"var({value})"
             # Return the string value (enum keyword like "flex-start", "center", etc.)
             return value
         # If index is out of bounds, treat it as an integer enum value
@@ -750,18 +828,43 @@ def _pick_best_value(
             return (val, f"type={vtype}, color[{idx}]")
 
     # For CSS custom properties, infer the expected type from the property name
-    if prop_name.startswith('--'):
+    if prop_name.startswith("--"):
         prop_lower = prop_name.lower()
 
         # Numeric/dimension properties should prefer floats over variable references
-        if any(keyword in prop_lower for keyword in ['padding', 'margin', 'radius', 'spacing', 'gap',
-                                                       'width', 'height', 'size', 'thickness', 'weight',
-                                                       'offset', 'border-width']):
+        if any(
+            keyword in prop_lower
+            for keyword in [
+                "padding",
+                "margin",
+                "radius",
+                "spacing",
+                "gap",
+                "width",
+                "height",
+                "size",
+                "thickness",
+                "weight",
+                "offset",
+                "border-width",
+            ]
+        ):
             # Prefer Type 2 (float) for dimension properties
             type_priority = {2: 0, 3: 1, 11: 2, 10: 3, 8: 4, 4: 5, 1: 6, 5: 7, 7: 8}
         # Color properties should prefer colors or color variable references
-        elif any(keyword in prop_lower for keyword in ['color', 'colour', 'background', 'foreground',
-                                                         'tint', 'border-color']) and not any(keyword in prop_lower for keyword in ['width', 'radius', 'thickness']):
+        elif any(
+            keyword in prop_lower
+            for keyword in [
+                "color",
+                "colour",
+                "background",
+                "foreground",
+                "tint",
+                "border-color",
+            ]
+        ) and not any(
+            keyword in prop_lower for keyword in ["width", "radius", "thickness"]
+        ):
             # Prefer Type 4 (color) and Type 10 (variable) for color properties
             type_priority = {4: 0, 10: 1, 11: 2, 3: 3, 8: 4, 2: 5, 1: 6, 5: 7, 7: 8}
         else:
@@ -819,12 +922,16 @@ def clean_for_json(obj, seen=None, max_depth: int = 10):
 
     if hasattr(obj, "m_ValueType") and hasattr(obj, "valueIndex"):
         return {
-            "m_ValueType": int(getattr(obj, "m_ValueType"))
-            if getattr(obj, "m_ValueType") is not None
-            else None,
-            "valueIndex": int(getattr(obj, "valueIndex"))
-            if getattr(obj, "valueIndex") is not None
-            else None,
+            "m_ValueType": (
+                int(getattr(obj, "m_ValueType"))
+                if getattr(obj, "m_ValueType") is not None
+                else None
+            ),
+            "valueIndex": (
+                int(getattr(obj, "valueIndex"))
+                if getattr(obj, "valueIndex") is not None
+                else None
+            ),
         }
 
     selector_keys = ["m_Specificity", "m_Type", "m_PreviousRelationship", "ruleIndex"]

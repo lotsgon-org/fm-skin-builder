@@ -213,11 +213,11 @@ def _patch_float_property(
     ]
 
     # Get all variable references (Type 3 or 10) that should be removed for shorthand
-    var_references = [
-        val
-        for val in values
-        if getattr(val, "m_ValueType", None) in {3, 10}
-    ] if is_shorthand else []
+    var_references = (
+        [val for val in values if getattr(val, "m_ValueType", None) in {3, 10}]
+        if is_shorthand
+        else []
+    )
 
     if is_shorthand and (len(float_values) > 1 or var_references):
         # Shorthand property with multiple values - update all of them
@@ -252,10 +252,14 @@ def _patch_float_property(
             is_var_ref = False
             if val_type in {3, 10}:  # Variable reference types
                 is_var_ref = True
-            elif val_type == 8 and val_index is not None and 0 <= val_index < len(strings):
+            elif (
+                val_type == 8
+                and val_index is not None
+                and 0 <= val_index < len(strings)
+            ):
                 # Type 8 string that might be a variable name
                 string_val = strings[val_index]
-                if string_val and string_val.startswith('--'):
+                if string_val and string_val.startswith("--"):
                     is_var_ref = True
 
             if is_var_ref:
@@ -301,10 +305,14 @@ def _patch_float_property(
                     is_var_ref = False
                     if val_type in {3, 10}:  # Variable reference types
                         is_var_ref = True
-                    elif val_type == 8 and val_index is not None and 0 <= val_index < len(strings):
+                    elif (
+                        val_type == 8
+                        and val_index is not None
+                        and 0 <= val_index < len(strings)
+                    ):
                         # Type 8 string that might be a variable name
                         string_val = strings[val_index]
-                        if string_val and string_val.startswith('--'):
+                        if string_val and string_val.startswith("--"):
                             is_var_ref = True
 
                     if is_var_ref:
@@ -1012,7 +1020,10 @@ class CssPatcher:
                 for selector in getattr(sel, "m_Selectors", []):
                     parts = getattr(selector, "m_Parts", [])
                     sel_text = build_selector_from_parts(parts)
-                    if sel_text == target_selector_text or sel_text.lstrip(".") == target_selector_text:
+                    if (
+                        sel_text == target_selector_text
+                        or sel_text.lstrip(".") == target_selector_text
+                    ):
                         selectors_in_rule.append((sel_idx, sel_text))
                         break
 
@@ -1025,7 +1036,10 @@ class CssPatcher:
                     for selector in getattr(sel, "m_Selectors", []):
                         parts = getattr(selector, "m_Parts", [])
                         sel_text = build_selector_from_parts(parts)
-                        if sel_text != target_selector_text and sel_text.lstrip(".") != target_selector_text:
+                        if (
+                            sel_text != target_selector_text
+                            and sel_text.lstrip(".") != target_selector_text
+                        ):
                             other_selectors.append((sel_idx, sel_text))
                             break
 
@@ -1063,8 +1077,12 @@ class CssPatcher:
                 for orig_val in orig_values:
                     new_val = type(orig_val)()
                     # Copy all attributes
-                    setattr(new_val, "m_ValueType", getattr(orig_val, "m_ValueType", None))
-                    setattr(new_val, "valueIndex", getattr(orig_val, "valueIndex", None))
+                    setattr(
+                        new_val, "m_ValueType", getattr(orig_val, "m_ValueType", None)
+                    )
+                    setattr(
+                        new_val, "valueIndex", getattr(orig_val, "valueIndex", None)
+                    )
                     new_values.append(new_val)
                 setattr(new_prop, "m_Values", new_values)
                 new_props.append(new_prop)
@@ -1500,7 +1518,7 @@ class CssPatcher:
 
         # Now actually split the rules
         rule_index_mapping = {}  # Maps old rule_idx -> new rule_idx for selectors that got split
-        for (selector_text, old_rule_idx) in rules_to_split:
+        for selector_text, old_rule_idx in rules_to_split:
             new_rule_idx = self._split_rule_for_selector(
                 data, old_rule_idx, selector_text, name
             )
@@ -1553,7 +1571,9 @@ class CssPatcher:
                             # Check if it's a variable reference first
                             parsed_var = parse_variable_value(value_str)
                             # Also check for bare CSS variable names (starting with --)
-                            is_bare_variable = isinstance(value_str, str) and value_str.strip().startswith("--")
+                            is_bare_variable = isinstance(
+                                value_str, str
+                            ) and value_str.strip().startswith("--")
 
                             if parsed_var is not None or is_bare_variable:
                                 # Variable reference (var(--name)) or bare variable name (--name)
@@ -1654,7 +1674,9 @@ class CssPatcher:
                                 new_index = len(colors) - 1
 
                                 # Update the value to point to the new color
-                                old_index = getattr(replacement_handle, "valueIndex", None)
+                                old_index = getattr(
+                                    replacement_handle, "valueIndex", None
+                                )
                                 setattr(replacement_handle, "m_ValueType", 4)
                                 setattr(replacement_handle, "valueIndex", new_index)
 
@@ -1666,9 +1688,7 @@ class CssPatcher:
                                 )
 
                                 try:
-                                    touches = getattr(
-                                        self, "_selector_touches", None
-                                    )
+                                    touches = getattr(self, "_selector_touches", None)
                                     if touches is not None:
                                         norm_sel = key[0]
                                         touches.setdefault(
@@ -2023,7 +2043,7 @@ class CssPatcher:
             max_line = max(
                 (getattr(p, "m_Line", None) for p in properties),
                 key=lambda x: x if x is not None else -1,
-                default=None
+                default=None,
             )
             if max_line is not None and max_line >= 0:
                 next_line = max_line + 1
