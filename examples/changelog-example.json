@@ -1,0 +1,358 @@
+{
+  "from_version": "2026.3.0",
+  "to_version": "2026.4.0",
+  "generated_at": "2025-01-15T12:30:45Z",
+  "summary": {
+    "css_variable": {
+      "added": 5,
+      "removed": 2,
+      "modified": 12,
+      "total": 19
+    },
+    "css_class": {
+      "added": 8,
+      "removed": 1,
+      "modified": 15,
+      "total": 24
+    },
+    "sprite": {
+      "added": 3,
+      "removed": 0,
+      "modified": 2,
+      "total": 5
+    },
+    "texture": {
+      "added": 1,
+      "removed": 0,
+      "modified": 1,
+      "total": 2
+    },
+    "font": {
+      "added": 0,
+      "removed": 0,
+      "modified": 0,
+      "total": 0
+    }
+  },
+  "changes_by_type": {
+    "css_class": {
+      "added": [
+        {
+          "asset_type": "css_class",
+          "name": ".btn-primary",
+          "change_type": "added",
+          "details": {
+            "stylesheet": "FMButtons",
+            "properties": "padding: 6px, 10px; color: #FFFFFF; background-color: var(--button-bg)",
+            "variables_used": ["--button-bg"]
+          }
+        }
+      ],
+      "removed": [
+        {
+          "asset_type": "css_class",
+          "name": ".old-button",
+          "change_type": "removed",
+          "details": {
+            "stylesheet": "FMButtons",
+            "properties": "padding: 4px; color: #000000"
+          }
+        }
+      ],
+      "modified": [
+        {
+          "asset_type": "css_class",
+          "name": ".player-name",
+          "change_type": "modified",
+          "details": {
+            "stylesheet": "FMColours",
+            "added_properties": [
+              {
+                "property": "background-image",
+                "value": "sprite://FMImages_1x/star_full"
+              }
+            ],
+            "removed_properties": [],
+            "modified_properties": [
+              {
+                "property": "border-radius",
+                "old_raw": "2px",
+                "new_raw": "4px",
+                "old_resolved": "2px",
+                "new_resolved": "4px"
+              },
+              {
+                "property": "background-color",
+                "old_raw": "var(--club-primary)",
+                "new_raw": "var(--club-primary)",
+                "old_resolved": "#2196F3",
+                "new_resolved": "#1976D2"
+              }
+            ],
+            "old_variables_used": ["--club-primary"],
+            "new_variables_used": ["--club-primary"],
+            "variable_changes": {
+              "added": [],
+              "removed": []
+            },
+            "asset_changes": {
+              "added": ["FMImages_1x/star_full"],
+              "removed": []
+            }
+          }
+        },
+        {
+          "asset_type": "css_class",
+          "name": ".header-title",
+          "change_type": "modified",
+          "details": {
+            "stylesheet": "FMTypography",
+            "added_properties": [],
+            "removed_properties": [
+              {
+                "property": "text-transform",
+                "value": "uppercase"
+              }
+            ],
+            "modified_properties": [
+              {
+                "property": "color",
+                "old_raw": "#FFFFFF",
+                "new_raw": "var(--text-light)",
+                "old_resolved": "#FFFFFF",
+                "new_resolved": "#FFFFFF"
+              }
+            ],
+            "old_variables_used": [],
+            "new_variables_used": ["--text-light"],
+            "variable_changes": {
+              "added": ["--text-light"],
+              "removed": []
+            },
+            "asset_changes": {
+              "added": [],
+              "removed": []
+            }
+          }
+        }
+      ]
+    },
+    "css_variable": {
+      "added": [
+        {
+          "asset_type": "css_variable",
+          "name": "--new-accent-color",
+          "change_type": "added",
+          "details": {
+            "stylesheet": "FMColours",
+            "property_name": "--new-accent-color",
+            "values": "#FF5722",
+            "colors": ["#FF5722"]
+          }
+        }
+      ],
+      "removed": [
+        {
+          "asset_type": "css_variable",
+          "name": "--old-deprecated-color",
+          "change_type": "removed",
+          "details": {
+            "stylesheet": "FMColours",
+            "property_name": "--old-deprecated-color",
+            "values": "#9E9E9E"
+          }
+        }
+      ],
+      "modified": [
+        {
+          "asset_type": "css_variable",
+          "name": "--club-primary",
+          "change_type": "modified",
+          "details": {
+            "stylesheet": "FMColours",
+            "property_name": "--club-primary",
+            "old_values": "#2196F3",
+            "new_values": "#1976D2",
+            "old_colors": ["#2196F3"],
+            "new_colors": ["#1976D2"]
+          }
+        }
+      ]
+    },
+    "sprite": {
+      "added": [
+        {
+          "asset_type": "sprite",
+          "name": "icon_new_feature",
+          "change_type": "added",
+          "details": {
+            "width": 32,
+            "height": 32,
+            "has_vertex_data": false,
+            "dominant_colors": ["#1976D2", "#FFFFFF"],
+            "tags": ["icon", "new", "feature"],
+            "bundles": ["ui-icons.bundle"]
+          }
+        }
+      ],
+      "removed": [],
+      "modified": [
+        {
+          "asset_type": "sprite",
+          "name": "icon_star",
+          "change_type": "modified",
+          "details": {
+            "old_dimensions": "24x24",
+            "new_dimensions": "32x32",
+            "old_colors": ["#FFD700", "#000000"],
+            "new_colors": ["#FFC107", "#FFFFFF"],
+            "content_changed": true
+          }
+        }
+      ]
+    },
+    "texture": {
+      "added": [
+        {
+          "asset_type": "texture",
+          "name": "background_gradient",
+          "change_type": "added",
+          "details": {
+            "width": 1920,
+            "height": 1080,
+            "type": "background",
+            "dominant_colors": ["#1976D2", "#64B5F6"],
+            "tags": ["background", "gradient"],
+            "bundles": ["ui-backgrounds.bundle"]
+          }
+        }
+      ],
+      "removed": [],
+      "modified": []
+    },
+    "font": {
+      "added": [],
+      "removed": [],
+      "modified": []
+    }
+  },
+  "changes_by_stylesheet": {
+    "FMColours": {
+      "css_variables": {
+        "added": [
+          {
+            "asset_type": "css_variable",
+            "name": "--new-accent-color",
+            "change_type": "added",
+            "details": {
+              "stylesheet": "FMColours",
+              "property_name": "--new-accent-color",
+              "values": "#FF5722",
+              "colors": ["#FF5722"]
+            }
+          }
+        ],
+        "removed": [
+          {
+            "asset_type": "css_variable",
+            "name": "--old-deprecated-color",
+            "change_type": "removed",
+            "details": {
+              "stylesheet": "FMColours",
+              "property_name": "--old-deprecated-color",
+              "values": "#9E9E9E"
+            }
+          }
+        ],
+        "modified": [
+          {
+            "asset_type": "css_variable",
+            "name": "--club-primary",
+            "change_type": "modified",
+            "details": {
+              "stylesheet": "FMColours",
+              "property_name": "--club-primary",
+              "old_values": "#2196F3",
+              "new_values": "#1976D2",
+              "old_colors": ["#2196F3"],
+              "new_colors": ["#1976D2"]
+            }
+          }
+        ]
+      },
+      "css_classes": {
+        "added": [],
+        "removed": [],
+        "modified": [
+          {
+            "asset_type": "css_class",
+            "name": ".player-name",
+            "change_type": "modified",
+            "details": {
+              "stylesheet": "FMColours",
+              "added_properties": [
+                {
+                  "property": "background-image",
+                  "value": "sprite://FMImages_1x/star_full"
+                }
+              ],
+              "removed_properties": [],
+              "modified_properties": [
+                {
+                  "property": "border-radius",
+                  "old_raw": "2px",
+                  "new_raw": "4px",
+                  "old_resolved": "2px",
+                  "new_resolved": "4px"
+                }
+              ],
+              "old_variables_used": ["--club-primary"],
+              "new_variables_used": ["--club-primary"],
+              "variable_changes": {
+                "added": [],
+                "removed": []
+              },
+              "asset_changes": {
+                "added": ["FMImages_1x/star_full"],
+                "removed": []
+              }
+            }
+          }
+        ]
+      }
+    },
+    "FMButtons": {
+      "css_variables": {
+        "added": [],
+        "removed": [],
+        "modified": []
+      },
+      "css_classes": {
+        "added": [
+          {
+            "asset_type": "css_class",
+            "name": ".btn-primary",
+            "change_type": "added",
+            "details": {
+              "stylesheet": "FMButtons",
+              "properties": "padding: 6px, 10px; color: #FFFFFF; background-color: var(--button-bg)",
+              "variables_used": ["--button-bg"]
+            }
+          }
+        ],
+        "removed": [
+          {
+            "asset_type": "css_class",
+            "name": ".old-button",
+            "change_type": "removed",
+            "details": {
+              "stylesheet": "FMButtons",
+              "properties": "padding: 4px; color: #000000"
+            }
+          }
+        ],
+        "modified": []
+      }
+    }
+  }
+}

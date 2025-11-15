@@ -1,0 +1,111 @@
+{
+  "color_palette": {
+    "css_variables": {
+      "#1976D2": ["--primary-color", "--club-primary", "--link-color"],
+      "#FFFFFF": ["--white", "--text-light"],
+      "#2A2A2A": ["--dark-bg", "--button-bg"]
+    },
+    "sprites": {
+      "#1976D2": ["icon_star", "icon_player_default"],
+      "#FFFFFF": ["icon_home", "icon_star_outline"]
+    },
+    "textures": {
+      "#F5F5F5": ["background_default", "background_light"]
+    }
+  },
+  "tags": {
+    "button": {
+      "css_variables": [],
+      "css_classes": [".btn-primary", ".btn-secondary", ".btn-icon"],
+      "sprites": ["button_bg", "button_icon_plus"],
+      "textures": []
+    },
+    "player": {
+      "css_variables": [],
+      "css_classes": [".player-name", ".player-card", ".player-stats"],
+      "sprites": ["icon_player", "icon_player_default"],
+      "textures": []
+    },
+    "icon": {
+      "css_variables": [],
+      "css_classes": [".icon-container", ".icon-small"],
+      "sprites": ["icon_star", "icon_home", "icon_settings"],
+      "textures": []
+    }
+  },
+  "changes": {
+    "new": {
+      "css_variables": ["--new-accent-color", "--new-spacing"],
+      "css_classes": [".btn-primary", ".new-dialog"],
+      "sprites": ["icon_new_feature"],
+      "textures": [],
+      "fonts": []
+    },
+    "modified": {
+      "css_variables": ["--primary-color", "--button-bg"],
+      "css_classes": [".player-name", ".header-title"],
+      "sprites": ["icon_star"],
+      "textures": ["background_default"],
+      "fonts": []
+    },
+    "unchanged": {
+      "css_variables": ["--white", "--black"],
+      "css_classes": [".container", ".flex-row"],
+      "sprites": ["icon_home"],
+      "textures": [],
+      "fonts": ["Roboto"]
+    }
+  },
+  "css_reverse_indexes": {
+    "color_to_classes": {
+      "#FFFFFF": [".player-name", ".btn-primary", ".header-title", ".text-light"],
+      "#1976D2": [".player-name", ".link-primary", ".accent-box"],
+      "#2A2A2A": [".btn-primary", ".dark-panel", ".footer-bg"]
+    },
+    "property_to_classes": {
+      "color": [".player-name", ".btn-primary", ".header-title", ".text-light"],
+      "background-color": [".player-name", ".btn-primary", ".dark-panel"],
+      "border-radius": [".player-name", ".btn-primary", ".card-container"],
+      "padding": [".btn-primary", ".card-container", ".dialog-content"],
+      "background-image": [".player-name", ".icon-container", ".custom-bg"]
+    },
+    "variable_to_classes": {
+      "--club-primary": [".player-name", ".team-badge", ".club-colors"],
+      "--button-bg": [".btn-primary", ".btn-secondary", ".action-button"],
+      "--primary-color": [".link-primary", ".accent-box", ".highlight"],
+      "--text-light": [".header-title", ".subtitle", ".caption"]
+    },
+    "asset_to_classes": {
+      "FMImages_1x/star_full": [".player-name", ".rating-indicator", ".favorite-icon"],
+      "FMImages_1x/button_bg": [".btn-primary", ".action-button"],
+      "Icons/home": [".nav-home", ".breadcrumb-home"],
+      "Sprites/player_default": [".player-avatar", ".default-avatar"]
+    },
+    "token_to_classes": {
+      "4px": [".player-name", ".card-container", ".input-field"],
+      "6px": [".btn-primary", ".dialog-padding"],
+      "10px": [".btn-primary", ".container-margin", ".spacing-medium"],
+      "50%": [".circle-avatar", ".round-button"]
+    },
+    "variable_definitions": {
+      "--club-primary": [
+        {
+          "stylesheet": "FMColours",
+          "bundle": "ui-theme-base_1.bundle"
+        }
+      ],
+      "--button-bg": [
+        {
+          "stylesheet": "FMButtons",
+          "bundle": "ui-theme-base_1.bundle"
+        }
+      ],
+      "--primary-color": [
+        {
+          "stylesheet": "FMColours",
+          "bundle": "ui-theme-base_1.bundle"
+        }
+      ]
+    }
+  }
+}

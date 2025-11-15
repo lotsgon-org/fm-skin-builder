@@ -42,6 +42,7 @@ class CatalogueExporter:
         textures: List[Texture],
         fonts: List[Font],
         search_index: Dict[str, Any],
+        dependency_graphs: Dict[str, Any] = None,
     ) -> None:
         """
         Export all catalogue data to JSON files.
@@ -55,6 +56,7 @@ class CatalogueExporter:
                 textures.json
                 fonts.json
                 search-index.json
+                dependency-graphs.json  # New in schema 2.2.0
                 thumbnails/
                     sprites/
                     textures/
@@ -67,6 +69,7 @@ class CatalogueExporter:
             textures: Textures
             fonts: Fonts
             search_index: Search index
+            dependency_graphs: Dependency graphs (optional, schema 2.2.0+)
         """
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -110,6 +113,12 @@ class CatalogueExporter:
 
         # Export search index
         self._write_json(self.output_dir / "search-index.json", search_index)
+
+        # Export dependency graphs (schema 2.2.0+)
+        if dependency_graphs:
+            self._write_json(
+                self.output_dir / "dependency-graphs.json", dependency_graphs
+            )
 
     def _write_json(self, path: Path, data: Any) -> None:
         """Write data to JSON file."""

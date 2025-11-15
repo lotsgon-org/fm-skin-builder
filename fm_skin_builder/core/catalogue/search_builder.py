@@ -47,6 +47,10 @@ class SearchIndexBuilder:
             "changes": self._build_change_index(
                 css_variables, css_classes, sprites, textures, fonts
             ),
+            # New reverse indexes for CSS classes (schema 2.2.0+)
+            "css_reverse_indexes": self._build_css_reverse_indexes(
+                css_classes, css_variables
+            ),
         }
 
         return index
@@ -228,3 +232,77 @@ class SearchIndexBuilder:
                 change_index[status]["fonts"].append(font.name)
 
         return change_index
+
+    def _build_css_reverse_indexes(
+        self,
+        css_classes: List[CSSClass],
+        css_variables: List[CSSVariable],
+    ) -> Dict[str, Any]:
+        """
+        Build comprehensive reverse indexes for CSS classes.
+
+        These indexes enable searching by:
+        - Hex color value → classes using that color
+        - Property name → classes defining that property
+        - Variable name → classes using that variable
+        - Asset/sprite reference → classes using that asset
+        - Raw value → classes with that value
+
+        Args:
+            css_classes: List of CSS classes
+            css_variables: List of CSS variables
+
+        Returns:
+            Dictionary with reverse indexes
+        """
+        # Initialize reverse indexes
+        color_to_classes = defaultdict(list)
+        property_to_classes = defaultdict(list)
+        variable_to_classes = defaultdict(list)
+        asset_to_classes = defaultdict(list)
+        token_to_classes = defaultdict(list)
+
+        # Process each CSS class
+        for css_class in css_classes:
+            class_name = css_class.name
+
+            # Index by color tokens
+            for color in css_class.color_tokens:
+                color_to_classes[color].append(class_name)
+
+            # Index by property names
+            if css_class.raw_properties:
+                for prop_name in css_class.raw_properties.keys():
+                    property_to_classes[prop_name].append(class_name)
+
+            # Index by variable references
+            for var_name in css_class.variables_used:
+                variable_to_classes[var_name].append(class_name)
+
+            # Index by asset dependencies
+            for asset in css_class.asset_dependencies:
+                asset_to_classes[asset].append(class_name)
+
+            # Index by all numeric tokens
+            for token in css_class.numeric_tokens:
+                token_to_classes[token].append(class_name)
+
+        # Build variable → classes that define it (for CSS variables)
+        variable_definitions = defaultdict(list)
+        for var in css_variables:
+            # Track which stylesheet defines this variable
+            variable_definitions[var.name].append(
+                {
+                    "stylesheet": var.stylesheet,
+                    "bundle": var.bundle,
+                }
+            )
+
+        return {
+            "color_to_classes": dict(color_to_classes),
+            "property_to_classes": dict(property_to_classes),
+            "variable_to_classes": dict(variable_to_classes),
+            "asset_to_classes": dict(asset_to_classes),
+            "token_to_classes": dict(token_to_classes),
+            "variable_definitions": dict(variable_definitions),
+        }

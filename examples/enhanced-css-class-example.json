@@ -1,0 +1,209 @@
+[
+  {
+    "name": ".player-name",
+    "stylesheet": "FMColours",
+    "bundle": "ui-theme-base_1.bundle",
+    "properties": [
+      {
+        "name": "color",
+        "values": [
+          {
+            "value_type": 4,
+            "index": 12,
+            "resolved_value": "#FFFFFF",
+            "raw_value": {
+              "r": 1.0,
+              "g": 1.0,
+              "b": 1.0,
+              "a": 1.0
+            }
+          }
+        ]
+      },
+      {
+        "name": "background-color",
+        "values": [
+          {
+            "value_type": 10,
+            "index": 5,
+            "resolved_value": "var(--club-primary)",
+            "raw_value": null
+          }
+        ]
+      },
+      {
+        "name": "border-radius",
+        "values": [
+          {
+            "value_type": 3,
+            "index": 8,
+            "resolved_value": "4px",
+            "raw_value": null
+          }
+        ]
+      },
+      {
+        "name": "background-image",
+        "values": [
+          {
+            "value_type": 5,
+            "index": 15,
+            "resolved_value": "sprite://FMImages_1x/star_full",
+            "raw_value": null
+          }
+        ]
+      }
+    ],
+    "raw_properties": {
+      "color": "#FFFFFF",
+      "background-color": "var(--club-primary)",
+      "border-radius": "4px",
+      "background-image": "sprite://FMImages_1x/star_full"
+    },
+    "resolved_properties": {
+      "color": "#FFFFFF",
+      "background-color": "#1976D2",
+      "border-radius": "4px",
+      "background-image": "sprite://FMImages_1x/star_full"
+    },
+    "asset_dependencies": [
+      "FMImages_1x/star_full"
+    ],
+    "variables_used": [
+      "--club-primary"
+    ],
+    "color_tokens": [
+      "#FFFFFF",
+      "#1976D2"
+    ],
+    "numeric_tokens": [
+      "4px"
+    ],
+    "summary": {
+      "colors": [
+        "#1976D2",
+        "#FFFFFF"
+      ],
+      "assets": [
+        "FMImages_1x/star_full"
+      ],
+      "variables": [
+        "--club-primary"
+      ],
+      "layout": {
+        "border-radius": "4px"
+      }
+    },
+    "tags": [
+      "player",
+      "name"
+    ],
+    "status": "active",
+    "first_seen": "2026.1.0",
+    "last_seen": "2026.4.0",
+    "change_status": "modified",
+    "changed_in_version": "2026.3.0",
+    "previous_properties": {
+      "color": "#FFFFFF",
+      "background-color": "#2196F3",
+      "border-radius": "2px"
+    }
+  },
+  {
+    "name": ".btn-primary",
+    "stylesheet": "FMButtons",
+    "bundle": "ui-theme-base_1.bundle",
+    "properties": [
+      {
+        "name": "padding",
+        "values": [
+          {
+            "value_type": 3,
+            "index": 20,
+            "resolved_value": "6px",
+            "raw_value": null
+          },
+          {
+            "value_type": 3,
+            "index": 21,
+            "resolved_value": "10px",
+            "raw_value": null
+          }
+        ]
+      },
+      {
+        "name": "color",
+        "values": [
+          {
+            "value_type": 4,
+            "index": 5,
+            "resolved_value": "#FFFFFF",
+            "raw_value": {
+              "r": 1.0,
+              "g": 1.0,
+              "b": 1.0,
+              "a": 1.0
+            }
+          }
+        ]
+      },
+      {
+        "name": "background-color",
+        "values": [
+          {
+            "value_type": 10,
+            "index": 3,
+            "resolved_value": "var(--button-bg)",
+            "raw_value": null
+          }
+        ]
+      }
+    ],
+    "raw_properties": {
+      "padding": "6px, 10px",
+      "color": "#FFFFFF",
+      "background-color": "var(--button-bg)"
+    },
+    "resolved_properties": {
+      "padding": "6px, 10px",
+      "color": "#FFFFFF",
+      "background-color": "#2A2A2A"
+    },
+    "asset_dependencies": [],
+    "variables_used": [
+      "--button-bg"
+    ],
+    "color_tokens": [
+      "#2A2A2A",
+      "#FFFFFF"
+    ],
+    "numeric_tokens": [
+      "6px",
+      "10px"
+    ],
+    "summary": {
+      "colors": [
+        "#2A2A2A",
+        "#FFFFFF"
+      ],
+      "assets": [],
+      "variables": [
+        "--button-bg"
+      ],
+      "layout": {
+        "padding": "6px, 10px"
+      }
+    },
+    "tags": [
+      "btn",
+      "primary",
+      "button"
+    ],
+    "status": "active",
+    "first_seen": "2026.1.0",
+    "last_seen": "2026.4.0",
+    "change_status": "new",
+    "changed_in_version": "2026.4.0",
+    "previous_properties": null
+  }
+]

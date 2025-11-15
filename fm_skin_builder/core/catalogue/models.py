@@ -25,7 +25,7 @@ class CatalogueMetadata(BaseModel):
 
     fm_version: str = Field(..., description="FM game version (e.g., '2026.4.0')")
     schema_version: str = Field(
-        default="2.1.0", description="Catalogue data format version"
+        default="2.2.0", description="Catalogue data format version"
     )
     generated_at: datetime = Field(default_factory=datetime.utcnow)
     bundles_scanned: List[str] = Field(default_factory=list)
@@ -125,10 +125,41 @@ class CSSClass(BaseModel):
     stylesheet: str = Field(..., description="Unity asset name: 'FMColours'")
     bundle: str
     properties: List[CSSProperty] = Field(default_factory=list)
+
+    # Enhanced introspection fields (schema 2.2.0+)
+    raw_properties: Optional[Dict[str, str]] = Field(
+        None,
+        description="Raw property values (before variable resolution): {'color': 'var(--primary)'}",
+    )
+    resolved_properties: Optional[Dict[str, str]] = Field(
+        None,
+        description="Resolved property values (after variable resolution): {'color': '#1976d2'}",
+    )
+    asset_dependencies: List[str] = Field(
+        default_factory=list,
+        description="Asset references: ['FMImages_1x/star_full', 'icon_player']",
+    )
+
+    # Search and indexing
     variables_used: List[str] = Field(
         default_factory=list,
         description="CSS variables referenced: ['--primary-color', '--button-bg']",
     )
+    color_tokens: List[str] = Field(
+        default_factory=list,
+        description="Hex color tokens: ['#ffffff', '#1976d2']",
+    )
+    numeric_tokens: List[str] = Field(
+        default_factory=list,
+        description="Numeric tokens: ['4px', '10px', '50%']",
+    )
+
+    # Property summary for quick overview
+    summary: Optional[Dict[str, Any]] = Field(
+        None,
+        description="Property summary: {colors: [...], assets: [...], variables: [...], layout: {...}}",
+    )
+
     tags: List[str] = Field(
         default_factory=list, description="Auto-tags: ['button', 'primary', 'ui']"
     )
@@ -143,6 +174,9 @@ class CSSClass(BaseModel):
     )
     changed_in_version: Optional[str] = Field(
         None, description="Version where this change occurred"
+    )
+    previous_properties: Optional[Dict[str, str]] = Field(
+        None, description="Previous properties for modified classes"
     )
 
 

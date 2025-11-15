@@ -316,17 +316,19 @@ class VersionDiffer:
             old_cls = old_classes[name]
             new_cls = new_classes[name]
 
-            # Compare properties
-            old_props = self._format_css_properties(old_cls.get("properties", []))
-            new_props = self._format_css_properties(new_cls.get("properties", []))
+            # Detailed property-level comparison
+            property_diff = self._compare_class_properties(old_cls, new_cls)
 
-            if old_props != new_props:
+            if property_diff["has_changes"]:
                 details = {
                     "stylesheet": new_cls.get("stylesheet"),
-                    "old_properties": old_props,
-                    "new_properties": new_props,
+                    "added_properties": property_diff["added"],
+                    "removed_properties": property_diff["removed"],
+                    "modified_properties": property_diff["modified"],
                     "old_variables_used": old_cls.get("variables_used", []),
                     "new_variables_used": new_cls.get("variables_used", []),
+                    "variable_changes": property_diff["variable_changes"],
+                    "asset_changes": property_diff["asset_changes"],
                 }
                 self.changes.append(
                     AssetChange(
@@ -882,3 +884,104 @@ class VersionDiffer:
 
         html += "</div></div>"
         return html
+
+    def _compare_class_properties(
+        self, old_cls: Dict[str, Any], new_cls: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        Compare CSS class properties at a detailed level.
+
+        Detects:
+        - Added properties
+        - Removed properties
+        - Modified property values (both raw and resolved)
+        - Variable reference changes
+        - Asset dependency changes
+
+        Args:
+            old_cls: Old class data
+            new_cls: New class data
+
+        Returns:
+            Dictionary with detailed property changes
+        """
+        # Get raw and resolved properties
+        old_raw = old_cls.get("raw_properties", {})
+        new_raw = new_cls.get("raw_properties", {})
+        old_resolved = old_cls.get("resolved_properties", {})
+        new_resolved = new_cls.get("resolved_properties", {})
+
+        # If enhanced properties not available, fall back to basic comparison
+        if not old_raw and not new_raw:
+            old_props = self._format_css_properties(old_cls.get("properties", []))
+            new_props = self._format_css_properties(new_cls.get("properties", []))
+            return {
+                "has_changes": old_props != new_props,
+                "added": [],
+                "removed": [],
+                "modified": [],
+                "variable_changes": [],
+                "asset_changes": [],
+            }
+
+        old_prop_names = set(old_raw.keys()) if old_raw else set()
+        new_prop_names = set(new_raw.keys()) if new_raw else set()
+
+        # Detect added/removed properties
+        added = new_prop_names - old_prop_names
+        removed = old_prop_names - new_prop_names
+        common = old_prop_names & new_prop_names
+
+        # Detect modified properties
+        modified = []
+        for prop_name in common:
+            old_val = old_raw.get(prop_name, "")
+            new_val = new_raw.get(prop_name, "")
+            old_resolved_val = old_resolved.get(prop_name, "")
+            new_resolved_val = new_resolved.get(prop_name, "")
+
+            if old_val != new_val or old_resolved_val != new_resolved_val:
+                modified.append(
+                    {
+                        "property": prop_name,
+                        "old_raw": old_val,
+                        "new_raw": new_val,
+                        "old_resolved": old_resolved_val,
+                        "new_resolved": new_resolved_val,
+                    }
+                )
+
+        # Detect variable reference changes
+        old_vars = set(old_cls.get("variables_used", []))
+        new_vars = set(new_cls.get("variables_used", []))
+        var_changes = {
+            "added": sorted(list(new_vars - old_vars)),
+            "removed": sorted(list(old_vars - new_vars)),
+        }
+
+        # Detect asset dependency changes
+        old_assets = set(old_cls.get("asset_dependencies", []))
+        new_assets = set(new_cls.get("asset_dependencies", []))
+        asset_changes = {
+            "added": sorted(list(new_assets - old_assets)),
+            "removed": sorted(list(old_assets - new_assets)),
+        }
+
+        has_changes = (
+            len(added) > 0
+            or len(removed) > 0
+            or len(modified) > 0
+            or len(var_changes["added"]) > 0
+            or len(var_changes["removed"]) > 0
+            or len(asset_changes["added"]) > 0
+            or len(asset_changes["removed"]) > 0
+        )
+
+        return {
+            "has_changes": has_changes,
+            "added": [{"property": p, "value": new_raw.get(p, "")} for p in sorted(added)],
+            "removed": [{"property": p, "value": old_raw.get(p, "")} for p in sorted(removed)],
+            "modified": modified,
+            "variable_changes": var_changes,
+            "asset_changes": asset_changes,
+        }

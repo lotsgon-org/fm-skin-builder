@@ -26,6 +26,7 @@ from .search_builder import SearchIndexBuilder
 from .deduplicator import deduplicate_by_filename
 from .exporter import CatalogueExporter
 from .version_differ import VersionDiffer
+from .dependency_graph import DependencyGraphBuilder
 from ..logger import get_logger
 
 log = get_logger(__name__)
@@ -141,6 +142,14 @@ class CatalogueBuilder:
             self.fonts,
         )
 
+        # Phase 5b: Build dependency graphs (schema 2.2.0+)
+        log.info("Phase 5b: Building dependency graphs...")
+        graph_builder = DependencyGraphBuilder()
+        dependency_graphs = graph_builder.build_graphs(
+            self.css_variables,
+            self.css_classes,
+        )
+
         # Phase 6: Create metadata
         log.info("Phase 6: Creating metadata...")
         metadata = self._create_metadata()
@@ -155,6 +164,7 @@ class CatalogueBuilder:
             self.textures,
             self.fonts,
             search_index,
+            dependency_graphs,
         )
 
         log.info(f"✅ Catalogue built successfully: {self.output_dir}")

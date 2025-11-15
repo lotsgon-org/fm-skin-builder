@@ -13,6 +13,7 @@ import re
 from .base import BaseAssetExtractor
 from ..models import CSSVariable, CSSClass, CSSProperty, CSSValueDefinition
 from ...css_utils import build_selector_from_parts
+from ..css_resolver import CSSResolver, resolve_css_class_properties
 
 
 class CSSExtractor(BaseAssetExtractor):
@@ -101,6 +102,13 @@ class CSSExtractor(BaseAssetExtractor):
                                 )
                                 if css_class:
                                     classes.append(css_class)
+
+            # Build variable registry and enhance classes with resolution
+            if variables and classes:
+                resolver = CSSResolver()
+                var_registry = resolver.build_variable_registry(variables)
+                self._enhance_classes_with_resolution(classes, var_registry)
+
         finally:
             # Clean up UnityPy environment
             try:
@@ -323,3 +331,47 @@ class CSSExtractor(BaseAssetExtractor):
                 tags.append(part.lower())
 
         return tags
+
+    def _enhance_classes_with_resolution(
+        self, classes: List[CSSClass], var_registry: Dict[str, str]
+    ) -> None:
+        """
+        Enhance CSS classes with resolved properties and comprehensive data.
+
+        Args:
+            classes: List of CSSClass instances to enhance
+            var_registry: Variable registry mapping names to resolved values
+        """
+        for css_class in classes:
+            try:
+                # Resolve properties and extract comprehensive data
+                (
+                    raw_properties,
+                    resolved_properties,
+                    variables_used,
+                    color_tokens,
+                    numeric_tokens,
+                    asset_dependencies,
+                ) = resolve_css_class_properties(css_class, var_registry)
+
+                # Update class with enhanced data
+                css_class.raw_properties = raw_properties
+                css_class.resolved_properties = resolved_properties
+                css_class.variables_used = variables_used
+                css_class.color_tokens = color_tokens
+                css_class.numeric_tokens = numeric_tokens
+                css_class.asset_dependencies = asset_dependencies
+
+                # Build property summary
+                resolver = CSSResolver(var_registry)
+                css_class.summary = resolver.build_property_summary(
+                    raw_properties, resolved_properties
+                )
+
+            except Exception as e:
+                # Log error but don't fail the entire extraction
+                from ...logger import get_logger
+                log = get_logger(__name__)
+                log.warning(
+                    f"Failed to enhance class {css_class.name}: {e}"
+                )

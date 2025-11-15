@@ -1,0 +1,293 @@
+{
+  "variable_to_classes": {
+    "adjacency": {
+      "--club-primary": [".player-name", ".team-badge", ".club-colors"],
+      "--button-bg": [".btn-primary", ".btn-secondary", ".action-button"],
+      "--primary-color": [".link-primary", ".accent-box", ".highlight"],
+      "--text-light": [".header-title", ".subtitle", ".caption"]
+    },
+    "nodes": [
+      {
+        "id": "--club-primary",
+        "type": "variable",
+        "stylesheet": "FMColours",
+        "bundle": "ui-theme-base_1.bundle",
+        "colors": ["#1976D2"],
+        "usage_count": 3
+      },
+      {
+        "id": "--button-bg",
+        "type": "variable",
+        "stylesheet": "FMButtons",
+        "bundle": "ui-theme-base_1.bundle",
+        "colors": ["#2A2A2A"],
+        "usage_count": 3
+      },
+      {
+        "id": "--primary-color",
+        "type": "variable",
+        "stylesheet": "FMColours",
+        "bundle": "ui-theme-base_1.bundle",
+        "colors": ["#1976D2"],
+        "usage_count": 3
+      },
+      {
+        "id": "--text-light",
+        "type": "variable",
+        "stylesheet": "FMColours",
+        "bundle": "ui-theme-base_1.bundle",
+        "colors": ["#FFFFFF"],
+        "usage_count": 3
+      }
+    ],
+    "edges": [
+      {
+        "from": "--club-primary",
+        "to": ".player-name",
+        "type": "uses_variable"
+      },
+      {
+        "from": "--club-primary",
+        "to": ".team-badge",
+        "type": "uses_variable"
+      },
+      {
+        "from": "--club-primary",
+        "to": ".club-colors",
+        "type": "uses_variable"
+      },
+      {
+        "from": "--button-bg",
+        "to": ".btn-primary",
+        "type": "uses_variable"
+      },
+      {
+        "from": "--button-bg",
+        "to": ".btn-secondary",
+        "type": "uses_variable"
+      },
+      {
+        "from": "--button-bg",
+        "to": ".action-button",
+        "type": "uses_variable"
+      }
+    ],
+    "summary": {
+      "total_variables": 4,
+      "total_edges": 12,
+      "most_used_variables": [
+        {"name": "--club-primary", "count": 3},
+        {"name": "--button-bg", "count": 3},
+        {"name": "--primary-color", "count": 3},
+        {"name": "--text-light", "count": 3}
+      ]
+    }
+  },
+  "class_to_variables": {
+    "adjacency": {
+      ".player-name": ["--club-primary"],
+      ".btn-primary": ["--button-bg"],
+      ".link-primary": ["--primary-color"],
+      ".header-title": ["--text-light", "--primary-color"]
+    },
+    "nodes": [
+      {
+        "id": ".player-name",
+        "type": "class",
+        "stylesheet": "FMColours",
+        "bundle": "ui-theme-base_1.bundle",
+        "variable_count": 1,
+        "asset_count": 1
+      },
+      {
+        "id": ".btn-primary",
+        "type": "class",
+        "stylesheet": "FMButtons",
+        "bundle": "ui-theme-base_1.bundle",
+        "variable_count": 1,
+        "asset_count": 0
+      },
+      {
+        "id": ".link-primary",
+        "type": "class",
+        "stylesheet": "FMColours",
+        "bundle": "ui-theme-base_1.bundle",
+        "variable_count": 1,
+        "asset_count": 0
+      },
+      {
+        "id": ".header-title",
+        "type": "class",
+        "stylesheet": "FMTypography",
+        "bundle": "ui-theme-base_1.bundle",
+        "variable_count": 2,
+        "asset_count": 0
+      }
+    ],
+    "edges": [
+      {
+        "from": ".player-name",
+        "to": "--club-primary",
+        "type": "references_variable"
+      },
+      {
+        "from": ".btn-primary",
+        "to": "--button-bg",
+        "type": "references_variable"
+      },
+      {
+        "from": ".link-primary",
+        "to": "--primary-color",
+        "type": "references_variable"
+      },
+      {
+        "from": ".header-title",
+        "to": "--text-light",
+        "type": "references_variable"
+      },
+      {
+        "from": ".header-title",
+        "to": "--primary-color",
+        "type": "references_variable"
+      }
+    ],
+    "summary": {
+      "total_classes": 4,
+      "total_edges": 5,
+      "classes_with_most_variables": [
+        {"name": ".header-title", "count": 2},
+        {"name": ".player-name", "count": 1},
+        {"name": ".btn-primary", "count": 1},
+        {"name": ".link-primary", "count": 1}
+      ]
+    }
+  },
+  "sprite_to_classes": {
+    "adjacency": {
+      "FMImages_1x/star_full": [".player-name", ".rating-indicator", ".favorite-icon"],
+      "FMImages_1x/button_bg": [".btn-primary", ".action-button"],
+      "Icons/home": [".nav-home", ".breadcrumb-home"],
+      "Sprites/player_default": [".player-avatar", ".default-avatar"]
+    },
+    "nodes": [
+      {
+        "id": "FMImages_1x/star_full",
+        "type": "asset",
+        "usage_count": 3
+      },
+      {
+        "id": "FMImages_1x/button_bg",
+        "type": "asset",
+        "usage_count": 2
+      },
+      {
+        "id": "Icons/home",
+        "type": "asset",
+        "usage_count": 2
+      },
+      {
+        "id": "Sprites/player_default",
+        "type": "asset",
+        "usage_count": 2
+      }
+    ],
+    "edges": [
+      {
+        "from": "FMImages_1x/star_full",
+        "to": ".player-name",
+        "type": "used_by_class"
+      },
+      {
+        "from": "FMImages_1x/star_full",
+        "to": ".rating-indicator",
+        "type": "used_by_class"
+      },
+      {
+        "from": "FMImages_1x/star_full",
+        "to": ".favorite-icon",
+        "type": "used_by_class"
+      },
+      {
+        "from": "FMImages_1x/button_bg",
+        "to": ".btn-primary",
+        "type": "used_by_class"
+      },
+      {
+        "from": "FMImages_1x/button_bg",
+        "to": ".action-button",
+        "type": "used_by_class"
+      }
+    ],
+    "summary": {
+      "total_assets": 4,
+      "total_edges": 9,
+      "most_used_assets": [
+        {"name": "FMImages_1x/star_full", "count": 3},
+        {"name": "FMImages_1x/button_bg", "count": 2},
+        {"name": "Icons/home", "count": 2},
+        {"name": "Sprites/player_default", "count": 2}
+      ]
+    }
+  },
+  "variable_dependencies": {
+    "adjacency": {
+      "--button-hover": ["--button-bg"],
+      "--accent-dark": ["--primary-color"],
+      "--text-primary": ["--club-primary"]
+    },
+    "nodes": [
+      {
+        "id": "--button-bg",
+        "type": "variable",
+        "depends_on_count": 0
+      },
+      {
+        "id": "--button-hover",
+        "type": "variable",
+        "depends_on_count": 1
+      },
+      {
+        "id": "--primary-color",
+        "type": "variable",
+        "depends_on_count": 0
+      },
+      {
+        "id": "--accent-dark",
+        "type": "variable",
+        "depends_on_count": 1
+      },
+      {
+        "id": "--club-primary",
+        "type": "variable",
+        "depends_on_count": 0
+      },
+      {
+        "id": "--text-primary",
+        "type": "variable",
+        "depends_on_count": 1
+      }
+    ],
+    "edges": [
+      {
+        "from": "--button-hover",
+        "to": "--button-bg",
+        "type": "depends_on"
+      },
+      {
+        "from": "--accent-dark",
+        "to": "--primary-color",
+        "type": "depends_on"
+      },
+      {
+        "from": "--text-primary",
+        "to": "--club-primary",
+        "type": "depends_on"
+      }
+    ],
+    "summary": {
+      "total_variables": 6,
+      "total_dependencies": 3,
+      "variables_with_dependencies": 3
+    }
+  }
+}
