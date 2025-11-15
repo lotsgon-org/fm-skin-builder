@@ -15,7 +15,9 @@ __all__ = [
 ]
 
 
-def collect_replacement_stems(root: Path, *, extensions: Optional[Iterable[str]] = None) -> List[str]:
+def collect_replacement_stems(
+    root: Path, *, extensions: Optional[Iterable[str]] = None
+) -> List[str]:
     """Return filename stems for replacement assets under *root*."""
     exts = {e.lower() for e in (extensions or DEFAULT_TEXTURE_EXTENSIONS)}
     stems: List[str] = []

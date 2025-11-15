@@ -75,7 +75,9 @@ class TextureSwapService:
     def __init__(self, options: TextureSwapOptions):
         self.options = options
         # Dynamic Sprite Replacement (SIImage Fix): queue rebind jobs for paired bundles.
-        self._pending_dynamic_jobs: DefaultDict[str, List[DynamicSpriteRebind]] = defaultdict(list)
+        self._pending_dynamic_jobs: DefaultDict[str, List[DynamicSpriteRebind]] = (
+            defaultdict(list)
+        )
 
     def has_pending_jobs(self, bundle_name: str) -> bool:
         return bool(self._pending_dynamic_jobs.get(bundle_name.lower(), []))
@@ -121,7 +123,9 @@ class TextureSwapService:
                 self._pending_dynamic_jobs[target_key].extend(job_list)
 
         if immediate_jobs:
-            pointer_updates_total += apply_dynamic_sprite_rebinds(bundle.env, immediate_jobs)
+            pointer_updates_total += apply_dynamic_sprite_rebinds(
+                bundle.env, immediate_jobs
+            )
 
         if pointer_updates_total:
             report.texture_replacements += pointer_updates_total
@@ -134,5 +138,6 @@ class TextureSwapService:
 
     def _should_swap(self) -> bool:
         return any(
-            token in self._includes_lower for token in {"assets/icons", "assets/backgrounds"}
+            token in self._includes_lower
+            for token in {"assets/icons", "assets/backgrounds"}
         )

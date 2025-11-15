@@ -2,7 +2,6 @@
 Test catalogue models.
 """
 
-
 from fm_skin_builder.core.catalogue.models import (
     AssetStatus,
     CatalogueMetadata,
@@ -29,7 +28,7 @@ def test_css_value_definition():
         value_type=4,
         index=10,
         resolved_value="#1976d2",
-        raw_value={"r": 0.098, "g": 0.463, "b": 0.824, "a": 1.0}
+        raw_value={"r": 0.098, "g": 0.463, "b": 0.824, "a": 1.0},
     )
     assert val.value_type == 4
     assert val.index == 10
@@ -39,9 +38,7 @@ def test_css_value_definition():
 
 def test_css_property():
     """Test CSSProperty model."""
-    val = CSSValueDefinition(
-        value_type=4, index=10, resolved_value="#1976d2"
-    )
+    val = CSSValueDefinition(value_type=4, index=10, resolved_value="#1976d2")
     prop = CSSProperty(name="background-color", values=[val])
 
     assert prop.name == "background-color"
@@ -51,9 +48,7 @@ def test_css_property():
 
 def test_css_variable():
     """Test CSSVariable model."""
-    val = CSSValueDefinition(
-        value_type=4, index=10, resolved_value="#1976d2"
-    )
+    val = CSSValueDefinition(value_type=4, index=10, resolved_value="#1976d2")
     var = CSSVariable(
         name="--primary-color",
         stylesheet="FMColours",
@@ -74,9 +69,7 @@ def test_css_variable():
 
 def test_css_class():
     """Test CSSClass model."""
-    val = CSSValueDefinition(
-        value_type=4, index=10, resolved_value="#1976d2"
-    )
+    val = CSSValueDefinition(value_type=4, index=10, resolved_value="#1976d2")
     prop = CSSProperty(name="background-color", values=[val])
 
     cls = CSSClass(
@@ -185,7 +178,7 @@ def test_json_serialization():
         total_assets={"sprites": 1},
     )
 
-    json_data = metadata.model_dump(mode='json')
+    json_data = metadata.model_dump(mode="json")
     json_str = json.dumps(json_data)
 
     assert isinstance(json_str, str)

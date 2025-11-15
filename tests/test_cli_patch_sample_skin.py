@@ -56,8 +56,7 @@ def fake_unity_env():
 
     colors = [FakeColor(0.0, 0.0, 0.0, 1.0)]
     strings = ["--primary"]
-    rules = [
-        FakeRule([FakeProperty("color", [FakeValue(3, 0), FakeValue(4, 0)])])]
+    rules = [FakeRule([FakeProperty("color", [FakeValue(3, 0), FakeValue(4, 0)])])]
     data = FakeData("Style", strings, colors, rules)
     return FakeEnv([FakeObj(data)])
 
@@ -77,10 +76,12 @@ def test_cli_patch_uses_sample_skin(tmp_path, monkeypatch):
 
     # Mock UnityPy
     from fm_skin_builder.core import css_patcher as cp
+
     cp.UnityPy = SimpleNamespace(load=lambda path: fake_unity_env())
 
     # Run CLI
     from fm_skin_builder.cli import main as cli_main
+
     argv = ["prog", "patch", str(skin_copy), "--debug-export"]
     monkeypatch.setattr(sys, "argv", argv, raising=False)
     cli_main.main()

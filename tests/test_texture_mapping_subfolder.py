@@ -43,16 +43,17 @@ class FakeEnv:
 def test_texture_mapping_in_backgrounds_folder(tmp_path):
     skin = tmp_path / "skins" / "demo"
     (skin / "assets" / "backgrounds").mkdir(parents=True)
-    (skin / "config.json").write_text(json.dumps({
-        "schema_version": 2,
-        "name": "Demo",
-        "includes": ["assets/backgrounds"]
-    }), encoding="utf-8")
+    (skin / "config.json").write_text(
+        json.dumps(
+            {"schema_version": 2, "name": "Demo", "includes": ["assets/backgrounds"]}
+        ),
+        encoding="utf-8",
+    )
 
     # mapping in subfolder backgrounds
-    (skin / "assets" / "backgrounds" / "mapping.json").write_text(json.dumps({
-        "Sky Bet League One": "background_1"
-    }), encoding="utf-8")
+    (skin / "assets" / "backgrounds" / "mapping.json").write_text(
+        json.dumps({"Sky Bet League One": "background_1"}), encoding="utf-8"
+    )
     # replacement file uses the custom name
     (skin / "assets" / "backgrounds" / "background_1.jpg").write_bytes(b"JPGDATA")
 
@@ -64,7 +65,8 @@ def test_texture_mapping_in_backgrounds_folder(tmp_path):
     tex_obj = FakeObj("Texture2D", tex_data, path_id=5005)
 
     container_entry = SimpleNamespace(
-        first="Sky Bet League One.png", second=SimpleNamespace(m_PathID=5005))
+        first="Sky Bet League One.png", second=SimpleNamespace(m_PathID=5005)
+    )
     ab_data = SimpleNamespace(m_Container=[container_entry])
     ab_obj = FakeObj("AssetBundle", ab_data)
 
@@ -72,6 +74,7 @@ def test_texture_mapping_in_backgrounds_folder(tmp_path):
 
     from fm_skin_builder.core import css_patcher as cp
     from fm_skin_builder.core import textures as tx
+
     cp.UnityPy = SimpleNamespace(load=lambda path: env)
     tx.UnityPy = SimpleNamespace(load=lambda path: env)
 

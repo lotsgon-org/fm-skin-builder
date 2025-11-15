@@ -58,7 +58,9 @@ def build_uxml_tree(hits: List[StringHit]) -> str:
                 indent = max(1, indent - 1)
             elif hit.offset - last_offset < 120:
                 indent = min(indent + 1, 6)
-            xml_lines.append("  " * indent + f'<Element name="{text}" offset="{hit.offset}">')
+            xml_lines.append(
+                "  " * indent + f'<Element name="{text}" offset="{hit.offset}">'
+            )
             open_elements.append(indent)
         else:
             classes, style = detect_class_or_style(text)
@@ -68,7 +70,9 @@ def build_uxml_tree(hits: List[StringHit]) -> str:
                     attr_line.append(f'class="{" ".join(classes)}"')
                 if style:
                     attr_line.append(f'style="{style}"')
-                xml_lines.append("  " * (indent + 1) + f"<Style {' '.join(attr_line)} />")
+                xml_lines.append(
+                    "  " * (indent + 1) + f"<Style {' '.join(attr_line)} />"
+                )
             elif text.lower().startswith("uxmlserializeddata"):
                 xml_lines.append("  " * (indent + 1) + "<!-- SerializedData marker -->")
             elif len(text) < 60:

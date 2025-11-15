@@ -138,10 +138,14 @@ class TextureExtractor(BaseAssetExtractor):
             log.info(f"    Texture format retrieved: {texture_format}")
             sys.stdout.flush()
 
-            texture_format_name = str(texture_format) if texture_format is not None else "unknown"
+            texture_format_name = (
+                str(texture_format) if texture_format is not None else "unknown"
+            )
 
             # Log texture details for debugging - this helps identify crashes
-            log.info(f"    Processing texture: {name} (format={texture_format_name}, {width}x{height})")
+            log.info(
+                f"    Processing texture: {name} (format={texture_format_name}, {width}x{height})"
+            )
             sys.stdout.flush()
 
             # Skip problematic texture formats that cause segfaults
@@ -159,20 +163,36 @@ class TextureExtractor(BaseAssetExtractor):
             # PVRTC formats: 30-33
             problematic_formats = [
                 # ASTC formats (enum values 48-53)
-                48, 49, 50, 51, 52, 53,
+                48,
+                49,
+                50,
+                51,
+                52,
+                53,
                 # ETC formats (enum values 34, 45-47)
-                34, 45, 46, 47,
+                34,
+                45,
+                46,
+                47,
                 # BC7 (enum value 26)
                 26,
                 # PVRTC formats (enum values 30-33)
-                30, 31, 32, 33,
+                30,
+                31,
+                32,
+                33,
             ]
 
             # Also check by name if format is an enum
-            if hasattr(texture_format, 'name'):
+            if hasattr(texture_format, "name"):
                 format_name = texture_format.name
-                if any(problematic in format_name for problematic in ['ASTC', 'ETC', 'PVRTC', 'BC7']):
-                    log.warning(f"    Skipping texture {name} with potentially problematic format {format_name}")
+                if any(
+                    problematic in format_name
+                    for problematic in ["ASTC", "ETC", "PVRTC", "BC7"]
+                ):
+                    log.warning(
+                        f"    Skipping texture {name} with potentially problematic format {format_name}"
+                    )
                     return {
                         "name": name,
                         "bundle": bundle_name,
@@ -184,7 +204,9 @@ class TextureExtractor(BaseAssetExtractor):
                     }
 
             if texture_format in problematic_formats:
-                log.warning(f"    Skipping texture {name} with problematic format {texture_format}")
+                log.warning(
+                    f"    Skipping texture {name} with problematic format {texture_format}"
+                )
                 # Skip image extraction but keep metadata
                 return {
                     "name": name,
@@ -203,12 +225,18 @@ class TextureExtractor(BaseAssetExtractor):
             # On macOS, formats 28 (DXT1) and 29 (DXT5) cause segfaults in UnityPy's decoder
             # Use texture2ddecoder as a fallback on macOS
             import platform
-            use_fallback_decoder = platform.system() == 'Darwin' and texture_format in [28, 29]
+
+            use_fallback_decoder = platform.system() == "Darwin" and texture_format in [
+                28,
+                29,
+            ]
 
             if use_fallback_decoder:
                 # On macOS, use subprocess isolation to prevent crashes
                 format_name = "DXT1" if texture_format == 28 else "DXT5"
-                log.info(f"    Using subprocess isolation for {format_name} (format {texture_format}) on macOS")
+                log.info(
+                    f"    Using subprocess isolation for {format_name} (format {texture_format}) on macOS"
+                )
                 sys.stdout.flush()
 
                 from multiprocessing import Process, Queue
@@ -227,7 +255,9 @@ class TextureExtractor(BaseAssetExtractor):
                             if obj.type.name != "Texture2D":
                                 continue
                             data = obj.read()
-                            obj_name = getattr(data, "m_Name", None) or getattr(data, "name", None)
+                            obj_name = getattr(data, "m_Name", None) or getattr(
+                                data, "name", None
+                            )
                             if obj_name == tex_name:
                                 # Try to get image (may crash subprocess)
                                 img = data.image
@@ -235,22 +265,28 @@ class TextureExtractor(BaseAssetExtractor):
                                     buf = io.BytesIO()
                                     # Pre-downsample if needed
                                     if img.width > 2048 or img.height > 2048:
-                                        img.thumbnail((2048, 2048), PILImage.Resampling.LANCZOS)
-                                    img.save(buf, format='PNG')
-                                    queue.put(('success', buf.getvalue()))
+                                        img.thumbnail(
+                                            (2048, 2048), PILImage.Resampling.LANCZOS
+                                        )
+                                    img.save(buf, format="PNG")
+                                    queue.put(("success", buf.getvalue()))
                                 else:
-                                    queue.put(('empty', None))
+                                    queue.put(("empty", None))
                                 return
-                        queue.put(('notfound', None))
+                        queue.put(("notfound", None))
                     except Exception as e:
-                        queue.put(('error', str(e)))
+                        queue.put(("error", str(e)))
 
                 queue = Queue()
-                process = Process(target=extract_in_subprocess, args=(str(bundle_path), name, queue))
+                process = Process(
+                    target=extract_in_subprocess, args=(str(bundle_path), name, queue)
+                )
                 process.start()
                 process.join(timeout=30)  # 30 second timeout
 
-                log.info(f"    Subprocess finished - alive={process.is_alive()}, exitcode={process.exitcode}")
+                log.info(
+                    f"    Subprocess finished - alive={process.is_alive()}, exitcode={process.exitcode}"
+                )
                 sys.stdout.flush()
 
                 if process.is_alive():
@@ -271,7 +307,9 @@ class TextureExtractor(BaseAssetExtractor):
 
                 if process.exitcode != 0:
                     # Process crashed (segfault)
-                    log.warning(f"    Subprocess crashed (exitcode={process.exitcode}) for {name} - skipping image")
+                    log.warning(
+                        f"    Subprocess crashed (exitcode={process.exitcode}) for {name} - skipping image"
+                    )
                     sys.stdout.flush()
                     return {
                         "name": name,
@@ -286,11 +324,11 @@ class TextureExtractor(BaseAssetExtractor):
                 # Get result from queue
                 try:
                     result = queue.get_nowait()
-                    if result[0] == 'success':
+                    if result[0] == "success":
                         image_data = result[1]
                         log.info("    Success! Image extracted via subprocess")
                         sys.stdout.flush()
-                    elif result[0] == 'notfound':
+                    elif result[0] == "notfound":
                         log.warning("    Texture not found in subprocess reload")
                         return {
                             "name": name,
@@ -348,7 +386,7 @@ class TextureExtractor(BaseAssetExtractor):
 
                     # Convert to PNG bytes
                     buf = io.BytesIO()
-                    img_copy.save(buf, format='PNG')
+                    img_copy.save(buf, format="PNG")
                     image_data = buf.getvalue()
 
                     # Clean up
@@ -369,7 +407,9 @@ class TextureExtractor(BaseAssetExtractor):
             **self._create_default_status(),
         }
 
-    def _decode_dxt_texture(self, texture_obj: Any, texture_format: int, width: int, height: int):
+    def _decode_dxt_texture(
+        self, texture_obj: Any, texture_format: int, width: int, height: int
+    ):
         """
         Decode DXT compressed texture using texture2ddecoder.
 
@@ -389,32 +429,42 @@ class TextureExtractor(BaseAssetExtractor):
             from PIL import Image
 
             # Debug: log available attributes
-            attrs = [attr for attr in dir(texture_obj) if not attr.startswith('_')]
-            log.debug(f"    Available attributes: {attrs[:20]}")  # First 20 to avoid spam
+            attrs = [attr for attr in dir(texture_obj) if not attr.startswith("_")]
+            log.debug(
+                f"    Available attributes: {attrs[:20]}"
+            )  # First 20 to avoid spam
 
             # Get raw compressed data from Unity texture
             # Try various property names that might contain the data
             raw_data = None
 
             # Try image_data property
-            if hasattr(texture_obj, 'image_data'):
+            if hasattr(texture_obj, "image_data"):
                 raw_data = texture_obj.image_data
-                log.debug(f"    Found image_data: {type(raw_data)}, len={len(raw_data) if raw_data else 0}")
+                log.debug(
+                    f"    Found image_data: {type(raw_data)}, len={len(raw_data) if raw_data else 0}"
+                )
 
             # Try m_ImageData
-            if not raw_data and hasattr(texture_obj, 'm_ImageData'):
+            if not raw_data and hasattr(texture_obj, "m_ImageData"):
                 raw_data = texture_obj.m_ImageData
-                log.debug(f"    Found m_ImageData: {type(raw_data)}, len={len(raw_data) if raw_data else 0}")
+                log.debug(
+                    f"    Found m_ImageData: {type(raw_data)}, len={len(raw_data) if raw_data else 0}"
+                )
 
             # Try m_Data
-            if not raw_data and hasattr(texture_obj, 'm_Data'):
+            if not raw_data and hasattr(texture_obj, "m_Data"):
                 raw_data = texture_obj.m_Data
-                log.debug(f"    Found m_Data: {type(raw_data)}, len={len(raw_data) if raw_data else 0}")
+                log.debug(
+                    f"    Found m_Data: {type(raw_data)}, len={len(raw_data) if raw_data else 0}"
+                )
 
             # Try get_image_data() method if it exists
-            if not raw_data and hasattr(texture_obj, 'get_image_data'):
+            if not raw_data and hasattr(texture_obj, "get_image_data"):
                 raw_data = texture_obj.get_image_data()
-                log.debug(f"    Found get_image_data(): {type(raw_data)}, len={len(raw_data) if raw_data else 0}")
+                log.debug(
+                    f"    Found get_image_data(): {type(raw_data)}, len={len(raw_data) if raw_data else 0}"
+                )
 
             if not raw_data:
                 log.warning("    No raw texture data available in any known property")
@@ -426,7 +476,9 @@ class TextureExtractor(BaseAssetExtractor):
             elif texture_format == 29:  # DXT5/BC3
                 decoded = texture2ddecoder.decode_bc3(raw_data, width, height)
             else:
-                log.warning(f"    Unsupported format for texture2ddecoder: {texture_format}")
+                log.warning(
+                    f"    Unsupported format for texture2ddecoder: {texture_format}"
+                )
                 return None
 
             # Convert decoded bytes to PIL Image
@@ -436,11 +488,14 @@ class TextureExtractor(BaseAssetExtractor):
             return img
 
         except ImportError:
-            log.warning("    texture2ddecoder not installed, cannot decode DXT textures on macOS")
+            log.warning(
+                "    texture2ddecoder not installed, cannot decode DXT textures on macOS"
+            )
             return None
         except Exception as e:
             log.warning(f"    Error decoding DXT texture: {e}")
             import traceback
+
             log.debug(f"    Traceback: {traceback.format_exc()}")
             return None
 

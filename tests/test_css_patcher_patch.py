@@ -88,13 +88,12 @@ def test_var_based_patch_and_save(tmp_path: Path):
     # Setup a stylesheet that references strings[0] both as var (type 3) and color (type 4)
     colors = [FakeColor(0.0, 0.0, 0.0, 1.0)]
     strings = ["--primary"]
-    rule = FakeRule([
-        FakeProperty("color", [FakeValue(3, 0), FakeValue(4, 0)])
-    ])
+    rule = FakeRule([FakeProperty("color", [FakeValue(3, 0), FakeValue(4, 0)])])
     data = FakeData("Style", strings, colors, [rule])
     env = FakeEnv([FakeObj(data)])
 
     from fm_skin_builder.core import css_patcher as cp
+
     set_unitypy_in_module(cp, env)
 
     out_dir = tmp_path / "out"
@@ -120,21 +119,22 @@ def test_selector_override_patch(tmp_path: Path):
     # Build a rule with color value type=4 at color index 0, and a selector .green
     colors = [FakeColor(0.0, 0.0, 0.0, 1.0)]
     strings = []
-    rule = FakeRule([
-        FakeProperty("color", [FakeValue(4, 0)])
-    ])
+    rule = FakeRule([FakeProperty("color", [FakeValue(4, 0)])])
     sel = FakeComplexSelector(0, [FakeSelector([FakeSelPart("green", 3)])])
     data = FakeData("Style2", strings, colors, [rule], [sel])
     env = FakeEnv([FakeObj(data)])
 
     from fm_skin_builder.core import css_patcher as cp
+
     set_unitypy_in_module(cp, env)
 
     out_dir = tmp_path / "out2"
     css_data = CollectedCss.from_overrides(
         global_vars={},
-        global_selectors={(".green", "color"): "#00FF00",
-                          ("green", "color"): "#00FF00"},
+        global_selectors={
+            (".green", "color"): "#00FF00",
+            ("green", "color"): "#00FF00",
+        },
     )
     patcher = cp.CssPatcher(
         css_data,
@@ -151,16 +151,20 @@ def test_selector_override_patch(tmp_path: Path):
 def test_selector_override_converts_string_handles(tmp_path: Path):
     # If a selector override targets a property with only string handles, convert one to a literal color
     colors = [FakeColor(0.0, 0.0, 0.0, 1.0)]
-    strings = ["--colours-linear-scale-20",
-               "--colours-data-ratings-star-ability-orange"]
+    strings = [
+        "--colours-linear-scale-20",
+        "--colours-data-ratings-star-ability-orange",
+    ]
     prop = FakeProperty("color", [FakeValue(10, 0), FakeValue(8, 1)])
     rule = FakeRule([prop])
-    selector = FakeComplexSelector(0, [FakeSelector(
-        [FakeSelPart("attribute-colour-great", 3)])])
+    selector = FakeComplexSelector(
+        0, [FakeSelector([FakeSelPart("attribute-colour-great", 3)])]
+    )
     data = FakeData("StyleStrings", strings, colors, [rule], [selector])
     env = FakeEnv([FakeObj(data)])
 
     from fm_skin_builder.core import css_patcher as cp
+
     set_unitypy_in_module(cp, env)
 
     out_dir = tmp_path / "out_selector_strings"
@@ -193,13 +197,12 @@ def test_patch_direct_literal(tmp_path: Path):
     # color property with type 4, no var link; patch_direct should match '--foo-color' endswith 'color'
     colors = [FakeColor(0.0, 0.0, 0.0, 1.0)]
     strings = []
-    rule = FakeRule([
-        FakeProperty("color", [FakeValue(4, 0)])
-    ])
+    rule = FakeRule([FakeProperty("color", [FakeValue(4, 0)])])
     data = FakeData("Style3", strings, colors, [rule])
     env = FakeEnv([FakeObj(data)])
 
     from fm_skin_builder.core import css_patcher as cp
+
     set_unitypy_in_module(cp, env)
     out_dir = tmp_path / "out3"
     css_data = CollectedCss.from_overrides(
@@ -222,13 +225,12 @@ def test_patch_direct_literal(tmp_path: Path):
 def test_debug_export_writes_files(tmp_path: Path):
     colors = [FakeColor(0.0, 0.0, 0.0, 1.0)]
     strings = ["--primary"]
-    rule = FakeRule([
-        FakeProperty("color", [FakeValue(3, 0), FakeValue(4, 0)])
-    ])
+    rule = FakeRule([FakeProperty("color", [FakeValue(3, 0), FakeValue(4, 0)])])
     data = FakeData("DebugStyle", strings, colors, [rule])
     env = FakeEnv([FakeObj(data)])
 
     from fm_skin_builder.core import css_patcher as cp
+
     set_unitypy_in_module(cp, env)
     out_dir = tmp_path / "out4"
     debug_dir = out_dir / "debug_uss"
@@ -257,6 +259,7 @@ def test_root_level_variable_applies_when_strings_names_var(tmp_path: Path):
     env = FakeEnv([FakeObj(data)])
 
     from fm_skin_builder.core import css_patcher as cp
+
     set_unitypy_in_module(cp, env)
 
     out_dir = tmp_path / "out_root"
@@ -285,6 +288,7 @@ def test_root_level_literal_variable_updates(tmp_path: Path):
     env = FakeEnv([FakeObj(data)])
 
     from fm_skin_builder.core import css_patcher as cp
+
     set_unitypy_in_module(cp, env)
 
     out_dir = tmp_path / "out_literal"
@@ -309,13 +313,13 @@ def test_variable_reference_converted_to_literal_color(tmp_path: Path):
     # Root variable defined via var(--other); expect conversion into literal color with new entry
     colors = [FakeColor(0.1, 0.1, 0.1, 1.0)]
     strings = ["--other-token"]
-    prop = FakeProperty("--global-text-primary",
-                        [FakeValue(10, 0), FakeValue(2, 0)])
+    prop = FakeProperty("--global-text-primary", [FakeValue(10, 0), FakeValue(2, 0)])
     rule = FakeRule([prop])
     data = FakeData("RefStyle", strings, colors, [rule])
     env = FakeEnv([FakeObj(data)])
 
     from fm_skin_builder.core import css_patcher as cp
+
     set_unitypy_in_module(cp, env)
 
     out_dir = tmp_path / "out_var_literal"

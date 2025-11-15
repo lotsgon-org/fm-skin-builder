@@ -9,6 +9,7 @@ from pathlib import Path
 import sys
 import UnityPy
 
+
 def diagnose_bundle(bundle_path: Path):
     """Process bundle one asset at a time to find the culprit."""
     print(f"\n🔍 Diagnosing: {bundle_path.name}")
@@ -36,9 +37,9 @@ def diagnose_bundle(bundle_path: Path):
             # Get format details
             format_name = "unknown"
             format_value = "unknown"
-            if hasattr(tex_format, 'name'):
+            if hasattr(tex_format, "name"):
                 format_name = tex_format.name
-            if hasattr(tex_format, 'value'):
+            if hasattr(tex_format, "value"):
                 format_value = tex_format.value
 
             print(f"\n  [{i}] {name}")

@@ -47,16 +47,15 @@ def test_texture_mapping_target_to_source_variant(tmp_path):
     skin = tmp_path / "skins" / "demo"
     (skin / "assets" / "icons").mkdir(parents=True)
     (skin / "assets").mkdir(parents=True, exist_ok=True)
-    (skin / "config.json").write_text(json.dumps({
-        "schema_version": 2,
-        "name": "Demo",
-        "includes": ["assets/icons"]
-    }), encoding="utf-8")
+    (skin / "config.json").write_text(
+        json.dumps({"schema_version": 2, "name": "Demo", "includes": ["assets/icons"]}),
+        encoding="utf-8",
+    )
 
     # mapping: settings-small_4x (target) -> crown (source)
-    (skin / "assets" / "icons" / "mapping.json").write_text(json.dumps({
-        "settings-small_4x": "crown"
-    }), encoding="utf-8")
+    (skin / "assets" / "icons" / "mapping.json").write_text(
+        json.dumps({"settings-small_4x": "crown"}), encoding="utf-8"
+    )
 
     # Replacement file providing the 4x variant of crown
     (skin / "assets" / "icons" / "crown_x4.png").write_bytes(b"PNGDATA")
@@ -70,7 +69,8 @@ def test_texture_mapping_target_to_source_variant(tmp_path):
 
     # AssetBundle container contains the friendly alias with variant suffix
     container_entry = SimpleNamespace(
-        first="settings-small_4x.png", second=SimpleNamespace(m_PathID=7777))
+        first="settings-small_4x.png", second=SimpleNamespace(m_PathID=7777)
+    )
     ab_data = SimpleNamespace(m_Container=[container_entry])
     ab_obj = FakeObj("AssetBundle", ab_data)
 
@@ -78,6 +78,7 @@ def test_texture_mapping_target_to_source_variant(tmp_path):
 
     from fm_skin_builder.core import css_patcher as cp
     from fm_skin_builder.core import textures as tx
+
     cp.UnityPy = SimpleNamespace(load=lambda path: env)
     tx.UnityPy = SimpleNamespace(load=lambda path: env)
 

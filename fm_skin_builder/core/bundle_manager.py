@@ -66,7 +66,9 @@ class BundleManager:
                 if self._was_modified(data):
                     self.modified = True
 
-    def _patch_single_stylesheet(self, data, css_vars: Dict[str, str], name: str) -> None:
+    def _patch_single_stylesheet(
+        self, data, css_vars: Dict[str, str], name: str
+    ) -> None:
         """Patch a single stylesheet's colors."""
         colors = getattr(data, "colors", [])
         strings = getattr(data, "strings", [])
@@ -80,13 +82,17 @@ class BundleManager:
                     for val in getattr(prop, "m_Values", []):
                         if getattr(val, "m_ValueType", None) == 4:
                             value_index = getattr(val, "valueIndex", None)
-                            if value_index is not None and 0 <= value_index < len(colors):
+                            if value_index is not None and 0 <= value_index < len(
+                                colors
+                            ):
                                 hex_val = css_vars[prop_name]
                                 r, g, b, a = self._hex_to_rgba(hex_val)
                                 col = colors[value_index]
                                 if (col.r, col.g, col.b, col.a) != (r, g, b, a):
                                     col.r, col.g, col.b, col.a = r, g, b, a
-                                    logger.info(f"Patched {name}: {prop_name} -> {hex_val}")
+                                    logger.info(
+                                        f"Patched {name}: {prop_name} -> {hex_val}"
+                                    )
 
         # Patch CSS variables
         for color_idx, color in enumerate(colors):

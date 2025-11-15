@@ -1,1 +1,2 @@
-def run(args): print('verify (stub)')
+def run(args):
+    print("verify (stub)")

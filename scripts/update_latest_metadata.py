@@ -14,7 +14,7 @@ import os
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, Any, List
+from typing import Dict, Any
 
 try:
     import boto3
@@ -72,7 +72,11 @@ def get_artifact_info(artifacts_dir: Path, version: str) -> Dict[str, Any]:
             file_path = Path(root) / file
 
             # Skip signature files and other non-installer files
-            if file.endswith(".sig") or file.endswith(".blockmap") or file.endswith(".yml"):
+            if (
+                file.endswith(".sig")
+                or file.endswith(".blockmap")
+                or file.endswith(".yml")
+            ):
                 continue
 
             # Check file extension
@@ -223,7 +227,7 @@ def update_metadata(
         sys.exit(1)
 
     print("✅ Metadata updated successfully")
-    print(f"\nCurrent releases:")
+    print("\nCurrent releases:")
     stable_info = releases.get("stable")
     if stable_info:
         print(f"  Stable: {stable_info.get('version', 'unknown')}")

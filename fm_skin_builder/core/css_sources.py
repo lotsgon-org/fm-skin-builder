@@ -33,12 +33,9 @@ class CollectedCss:
     """Aggregated CSS data including optional per-stylesheet scoping information."""
 
     global_vars: Dict[str, str] = field(default_factory=dict)
-    global_selectors: Dict[Tuple[str, str], str] = field(
-        default_factory=dict
-    )
+    global_selectors: Dict[Tuple[str, str], str] = field(default_factory=dict)
     asset_map: Dict[str, List[CssFileOverrides]] = field(default_factory=dict)
-    files_by_stem: Dict[str, List[CssFileOverrides]
-                        ] = field(default_factory=dict)
+    files_by_stem: Dict[str, List[CssFileOverrides]] = field(default_factory=dict)
 
     @classmethod
     def from_overrides(
@@ -55,15 +52,9 @@ class CollectedCss:
         if global_selectors:
             data.global_selectors.update(global_selectors)
         if asset_map:
-            data.asset_map = {
-                k.lower(): list(v)
-                for k, v in asset_map.items()
-            }
+            data.asset_map = {k.lower(): list(v) for k, v in asset_map.items()}
         if files_by_stem:
-            data.files_by_stem = {
-                k.lower(): list(v)
-                for k, v in files_by_stem.items()
-            }
+            data.files_by_stem = {k.lower(): list(v) for k, v in files_by_stem.items()}
         return data
 
     def clone_asset_map(self) -> Dict[str, List[CssFileOverrides]]:
@@ -99,8 +90,7 @@ def _load_css_mapping(css_dir: Path) -> Dict[str, List[str]]:
             if isinstance(value, str):
                 targets = [value]
             elif isinstance(value, list):
-                targets = [str(item)
-                           for item in value if isinstance(item, (str, int))]
+                targets = [str(item) for item in value if isinstance(item, (str, int))]
             elif isinstance(value, dict):
                 # Allow {"stylesheets": [...]} for future extensibility
                 if "stylesheets" in value and isinstance(value["stylesheets"], list):
@@ -189,7 +179,8 @@ def collect_css_from_dir(css_dir: Path) -> CollectedCss:
             continue
 
         overrides = CssFileOverrides(
-            vars=file_vars, selectors=file_selectors, source=css_file)
+            vars=file_vars, selectors=file_selectors, source=css_file
+        )
 
         total_vars += len(file_vars)
         total_selectors += len(file_selectors)
@@ -237,15 +228,16 @@ def load_targeting_hints(
                 continue
             if "#" in line:
                 line = line.split("#", 1)[0].strip()
-            match_asset = re.match(
-                r"^asset\s*[:=]\s*(.+)$", line, re.IGNORECASE)
+            match_asset = re.match(r"^asset\s*[:=]\s*(.+)$", line, re.IGNORECASE)
             if match_asset:
-                names = [item.strip() for item in re.split(
-                    r",|;", match_asset.group(1)) if item.strip()]
+                names = [
+                    item.strip()
+                    for item in re.split(r",|;", match_asset.group(1))
+                    if item.strip()
+                ]
                 assets.update(names)
                 continue
-            match_selector = re.match(
-                r"^selector\s*[:=]\s*(.+)$", line, re.IGNORECASE)
+            match_selector = re.match(r"^selector\s*[:=]\s*(.+)$", line, re.IGNORECASE)
             if match_selector:
                 rest = match_selector.group(1).strip()
                 if " " in rest:
@@ -255,7 +247,6 @@ def load_targeting_hints(
                 else:
                     selectors.add(rest)
     except Exception as exc:
-        log.warning("Failed to parse targeting hints at %s: %s",
-                    hints_path, exc)
+        log.warning("Failed to parse targeting hints at %s: %s", hints_path, exc)
 
     return assets or None, selectors or None, selector_props or None

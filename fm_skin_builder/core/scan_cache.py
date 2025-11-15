@@ -119,9 +119,7 @@ def load_or_refresh_candidates(
     sel_map = index.get("selector_map", {})
 
     var_names: Set[str] = set(css_data.global_vars.keys())
-    selector_keys: Set[Tuple[str, str]] = set(
-        css_data.global_selectors.keys()
-    )
+    selector_keys: Set[Tuple[str, str]] = set(css_data.global_selectors.keys())
 
     for overrides_list in css_data.asset_map.values():
         for overrides in overrides_list:

@@ -43,11 +43,10 @@ def test_texture_swap_icons_with_includes(tmp_path, monkeypatch):
     # Skin with config v2 and includes assets/icons
     skin = tmp_path / "skins" / "demo"
     (skin / "assets" / "icons").mkdir(parents=True)
-    (skin / "config.json").write_text(json.dumps({
-        "schema_version": 2,
-        "name": "Demo",
-        "includes": ["assets/icons"]
-    }), encoding="utf-8")
+    (skin / "config.json").write_text(
+        json.dumps({"schema_version": 2, "name": "Demo", "includes": ["assets/icons"]}),
+        encoding="utf-8",
+    )
     # Provide replacement image bytes
     (skin / "assets" / "icons" / "Logo.png").write_bytes(b"PNGDATA")
 
@@ -60,6 +59,7 @@ def test_texture_swap_icons_with_includes(tmp_path, monkeypatch):
     env = FakeEnv([FakeObj(data_logo)])
     from fm_skin_builder.core import css_patcher as cp
     from fm_skin_builder.core import textures as tx
+
     cp.UnityPy = SimpleNamespace(load=lambda path: env)
     tx.UnityPy = SimpleNamespace(load=lambda path: env)
 

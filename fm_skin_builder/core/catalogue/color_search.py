@@ -21,11 +21,11 @@ def hex_to_rgb(hex_color: str) -> Tuple[int, int, int]:
     Returns:
         Tuple of (r, g, b) in range 0-255
     """
-    hex_color = hex_color.lstrip('#')
+    hex_color = hex_color.lstrip("#")
 
     # Handle 3-character hex codes
     if len(hex_color) == 3:
-        hex_color = ''.join([c * 2 for c in hex_color])
+        hex_color = "".join([c * 2 for c in hex_color])
 
     # Take first 6 characters (ignore alpha if present)
     hex_color = hex_color[:6]
@@ -132,15 +132,13 @@ def color_distance(color1: str, color2: str) -> float:
         try:
             r1, g1, b1 = hex_to_rgb(color1)
             r2, g2, b2 = hex_to_rgb(color2)
-            return math.sqrt((r1-r2)**2 + (g1-g2)**2 + (b1-b2)**2)
+            return math.sqrt((r1 - r2) ** 2 + (g1 - g2) ** 2 + (b1 - b2) ** 2)
         except Exception:
-            return float('inf')
+            return float("inf")
 
 
 def find_similar_colors(
-    target_hex: str,
-    color_map: Dict[str, List[str]],
-    threshold: float = 20.0
+    target_hex: str, color_map: Dict[str, List[str]], threshold: float = 20.0
 ) -> List[str]:
     """
     Find colors similar to target within perceptual distance threshold.

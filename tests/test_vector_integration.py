@@ -10,7 +10,7 @@ from pathlib import Path
 logging.basicConfig(
     level=logging.DEBUG,
     format="%(asctime)s [%(levelname)s] %(message)s",
-    handlers=[logging.StreamHandler(sys.stdout)]
+    handlers=[logging.StreamHandler(sys.stdout)],
 )
 
 log = logging.getLogger(__name__)
@@ -59,7 +59,7 @@ def main():
             skin_dir=skin_dir,
             includes=["assets/icons"],
             out_dir=out_dir,
-            dry_run=False
+            dry_run=False,
         )
 
         log.info(f"{scale}: {result.replaced_count} replacements")
