@@ -8,9 +8,9 @@ backups/
 __MACOSX/
 .pytest_cache/
 dist/
+*.egg-info/
 bundles/
 extracted_sprites/
-skins/new_skin
 node_modules/
 frontend/node_modules/
 frontend/dist/
@@ -22,3 +22,6 @@ fm_skin_builder.spec
 frontend/src-tauri/resources/backend/fm_skin_builder
 .venv/
 .env.local
+packages/
+assets/
+

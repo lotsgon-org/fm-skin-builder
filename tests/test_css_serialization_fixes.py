@@ -360,9 +360,15 @@ class TestKeywordPropertyHandling:
 
         for prop in keyword_only_props:
             # All should reject variable names in Type 1, 7, 8
-            assert _is_invalid_value("--some-var", prop, 1, set()), f"{prop} should reject Type 1 variables"
-            assert _is_invalid_value("--some-var", prop, 7, set()), f"{prop} should reject Type 7 variables"
-            assert _is_invalid_value("--some-var", prop, 8, set()), f"{prop} should reject Type 8 variables"
+            assert _is_invalid_value(
+                "--some-var", prop, 1, set()
+            ), f"{prop} should reject Type 1 variables"
+            assert _is_invalid_value(
+                "--some-var", prop, 7, set()
+            ), f"{prop} should reject Type 7 variables"
+            assert _is_invalid_value(
+                "--some-var", prop, 8, set()
+            ), f"{prop} should reject Type 8 variables"
 
     def test_type_10_still_wraps_in_var(self):
         """Test Type 10 (Variable Reference) still wraps in var()."""
