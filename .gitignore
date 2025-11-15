@@ -5,6 +5,7 @@ backups/
 .env
 *.pyc
 .DS_Store
+__MACOSX/
 .pytest_cache/
 dist/
 bundles/
