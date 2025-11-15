@@ -320,7 +320,9 @@ def serialize_stylesheet_to_uss(
     dimensions = getattr(data, "dimensions", []) if hasattr(data, "dimensions") else []
     rules = getattr(data, "m_Rules", [])
     selectors = (
-        getattr(data, "m_ComplexSelectors", []) if hasattr(data, "m_ComplexSelectors") else []
+        getattr(data, "m_ComplexSelectors", [])
+        if hasattr(data, "m_ComplexSelectors")
+        else []
     )
 
     # Unity USS Value Types:
@@ -440,7 +442,9 @@ def serialize_stylesheet_to_uss(
                     )
 
                     if formatted_value:
-                        processed_values.append((value_type, value_index, formatted_value))
+                        processed_values.append(
+                            (value_type, value_index, formatted_value)
+                        )
 
                 i += 1
 
@@ -701,7 +705,9 @@ def _format_uss_value(
         # (for backwards compatibility with older data)
         if 0 <= value_index < len(strings):
             value = strings[value_index]
-            if value and (value.startswith("project://") or value.startswith("resource://")):
+            if value and (
+                value.startswith("project://") or value.startswith("resource://")
+            ):
                 return f'"{value}"'
             return value
 
@@ -722,17 +728,23 @@ def _format_uss_value(
         if 0 <= value_index < len(strings):
             path = strings[value_index]
             # For very long paths (project:// URIs), quote them for readability
-            if path and (path.startswith("project://") or path.startswith("resource://")):
+            if path and (
+                path.startswith("project://") or path.startswith("resource://")
+            ):
                 return f'url("{path}")'
             return f"url('{path}')"
         return None
 
-    elif value_type == 7:  # Enum/Resource (Unity stores resource paths as Type 7 sometimes)
+    elif (
+        value_type == 7
+    ):  # Enum/Resource (Unity stores resource paths as Type 7 sometimes)
         # Check if this is actually a string index pointing to a resource URL or enum value
         if 0 <= value_index < len(strings):
             value = strings[value_index]
             # If it's a project:// or resource:// URL, quote it
-            if value and (value.startswith("project://") or value.startswith("resource://")):
+            if value and (
+                value.startswith("project://") or value.startswith("resource://")
+            ):
                 return f'"{value}"'
             # Type 7 should contain resource paths or enum values, not variable names
             # Variable names should be Type 10, not Type 7
@@ -748,7 +760,9 @@ def _format_uss_value(
             if _re.match(r"^-[\w-]+$", value):
                 value = _re.sub(r"^-+", "--", value)
             # Quote resource URLs for better formatting
-            elif value and (value.startswith("project://") or value.startswith("resource://")):
+            elif value and (
+                value.startswith("project://") or value.startswith("resource://")
+            ):
                 value = f'"{value}"'
             return value
         return None
@@ -866,7 +880,9 @@ def _pick_best_value(
                 "tint",
                 "border-color",
             ]
-        ) and not any(keyword in prop_lower for keyword in ["width", "radius", "thickness"]):
+        ) and not any(
+            keyword in prop_lower for keyword in ["width", "radius", "thickness"]
+        ):
             # Prefer Type 4 (color) and Type 10 (variable) for color properties
             type_priority = {4: 0, 10: 1, 11: 2, 3: 3, 8: 4, 2: 5, 1: 6, 5: 7, 7: 8}
         else:
@@ -882,7 +898,9 @@ def _pick_best_value(
     return (val, f"type={vtype}")
 
 
-def _is_invalid_value(value: str, prop_name: str, value_type: int, color_properties: set) -> bool:
+def _is_invalid_value(
+    value: str, prop_name: str, value_type: int, color_properties: set
+) -> bool:
     """
     Check if a value is invalid for the given property.
 
@@ -956,7 +974,9 @@ def clean_for_json(obj, seen=None, max_depth: int = 10):
                 else None
             ),
             "valueIndex": (
-                int(getattr(obj, "valueIndex")) if getattr(obj, "valueIndex") is not None else None
+                int(getattr(obj, "valueIndex"))
+                if getattr(obj, "valueIndex") is not None
+                else None
             ),
         }
 
@@ -973,9 +993,9 @@ def clean_for_json(obj, seen=None, max_depth: int = 10):
                 result[k] = clean_for_json(v, seen, max_depth - 1)
         return result
 
-    if all(hasattr(obj, c) for c in ("r", "g", "b", "a")) and type(obj).__name__.lower().startswith(
-        "color"
-    ):
+    if all(hasattr(obj, c) for c in ("r", "g", "b", "a")) and type(
+        obj
+    ).__name__.lower().startswith("color"):
         return {
             "r": float(obj.r),
             "g": float(obj.g),
@@ -983,7 +1003,9 @@ def clean_for_json(obj, seen=None, max_depth: int = 10):
             "a": float(obj.a),
         }
 
-    if type(obj).__name__ == "PPtr" or (hasattr(obj, "m_FileID") and hasattr(obj, "m_PathID")):
+    if type(obj).__name__ == "PPtr" or (
+        hasattr(obj, "m_FileID") and hasattr(obj, "m_PathID")
+    ):
         return {
             "m_FileID": int(getattr(obj, "m_FileID", 0)),
             "m_PathID": int(getattr(obj, "m_PathID", 0)),
