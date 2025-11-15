@@ -22,6 +22,8 @@ __all__ = [
     "tokenize_css_value",
     "apply_value_patch_preserve",
     "safe_parse_float",
+    "format_uss_value",
+    "convert_uss_values_to_text",
 ]
 
 
@@ -801,7 +803,9 @@ def _format_uss_value(
             if value and not value.startswith("--"):
                 return value
 
-        return None
+        # If we still don't have a value, return the index as a fallback
+        # This handles unknown StyleKeyword enum values
+        return f"<keyword-{value_index}>"
 
     elif value_type == 2:  # Float/Dimension
         if 0 <= value_index < len(floats):
@@ -906,6 +910,12 @@ def _format_uss_value(
             return f"url('{path}')"
         return None
 
+    elif value_type == 6:  # Asset reference (PPtr)
+        # Type 6 is an asset reference (e.g., font, sprite, texture)
+        # These are stored as indices into some asset array or as pointer references
+        # For now, represent as a placeholder since we don't have the asset data here
+        return f"<asset-ref:{value_index}>"
+
     elif (
         value_type == 7
     ):  # Enum/Resource (Unity stores resource paths as Type 7 sometimes)
@@ -938,13 +948,21 @@ def _format_uss_value(
             return value
         return None
 
-    elif value_type == 10:  # Variable name (should be wrapped in var())
+    elif value_type == 9:  # Missing asset reference
+        # Type 9 represents a missing or null asset reference
+        return "none"
+
+    elif value_type == 10:  # Variable name or keyword
+        # Type 10 can be:
+        # 1. Part of a triplet pattern (handled by convert_uss_values_to_text)
+        # 2. A standalone keyword value
+        # Don't wrap in var() here - let the triplet detection handle it
         if 0 <= value_index < len(strings):
-            varname = strings[value_index]
-            # Normalize variable name
-            varname = _re.sub(r"^-+", "--", varname)
-            # Wrap in var() function
-            return f"var({varname})"
+            value = strings[value_index]
+            # If it looks like a variable name, ensure it has -- prefix
+            if _re.match(r"^-[\w-]+$", value):
+                value = _re.sub(r"^-+", "--", value)
+            return value
         return None
 
     elif value_type == 11:  # Function call (already formatted)
@@ -1124,6 +1142,119 @@ def _is_invalid_value(
         return True
 
     return False
+
+
+def format_uss_value(
+    value_type: int,
+    value_index: int,
+    strings: List[str],
+    colors: List[Any],
+    floats: List[float],
+    dimensions: List[Any],
+    prop_name: str = "",
+) -> Optional[str]:
+    """
+    Public wrapper for _format_uss_value to convert Unity USS value to CSS/USS text.
+
+    Args:
+        value_type: Unity value type (1-11)
+        value_index: Index into appropriate array
+        strings: Stylesheet strings array
+        colors: Stylesheet colors array
+        floats: Stylesheet floats array
+        dimensions: Stylesheet dimensions array
+        prop_name: Property name for context
+
+    Returns:
+        Formatted CSS/USS value string, or None if invalid
+    """
+    return _format_uss_value(
+        value_type, value_index, strings, colors, floats, dimensions, prop_name
+    )
+
+
+def convert_uss_values_to_text(
+    values: List[Any],
+    prop_name: str,
+    strings: List[str],
+    colors: List[Any],
+    floats: List[float],
+    dimensions: List[Any],
+) -> str:
+    """
+    Convert a list of Unity USS values to a single CSS/USS value string.
+
+    Handles:
+    - Triplet pattern for var() references: [Type10=1, Type2=1.0, Type8=var_name] → var(--var_name)
+    - Multi-value properties: [Type2, Type2, Type2, Type2] → "0px 5px 0px 5px"
+    - Single values: [Type4] → "#FF0000"
+
+    Args:
+        values: List of Unity USS value objects with m_ValueType and valueIndex
+        prop_name: CSS property name for context
+        strings: Stylesheet strings array
+        colors: Stylesheet colors array
+        floats: Stylesheet floats array
+        dimensions: Stylesheet dimensions array
+
+    Returns:
+        Formatted CSS/USS value string (e.g., "var(--my-color)", "10px solid #FF0000")
+    """
+    formatted_values = []
+    i = 0
+
+    while i < len(values):
+        # Check if we have a triplet pattern starting at position i
+        # Triplet: [Type10=1, Type2=1.0, Type8=var_name] → var(--var_name)
+        if (
+            i + 2 < len(values)
+            and getattr(values[i], "m_ValueType", None) == 10
+            and getattr(values[i], "valueIndex", None) == 1
+            and getattr(values[i + 1], "m_ValueType", None) == 2
+            and getattr(values[i + 2], "m_ValueType", None) == 8
+        ):
+            # Check if Type 2 is 1.0 (the sentinel value)
+            type2_idx = getattr(values[i + 1], "valueIndex", None)
+            if (
+                type2_idx is not None
+                and 0 <= type2_idx < len(floats)
+                and floats[type2_idx] == 1.0
+            ):
+                # This is a triplet encoding for var(--variable)
+                type8_idx = getattr(values[i + 2], "valueIndex", None)
+                if type8_idx is not None and 0 <= type8_idx < len(strings):
+                    var_name = strings[type8_idx]
+                    # Ensure variable name has -- prefix
+                    if not var_name.startswith("--"):
+                        var_name = f"--{var_name}"
+                    # Add the var() reference
+                    formatted_values.append(f"var({var_name})")
+                    # Skip the next 2 values (we consumed the triplet)
+                    i += 3
+                    continue
+
+        # Not a triplet, process this value normally
+        value_type = getattr(values[i], "m_ValueType", None)
+        value_index = getattr(values[i], "valueIndex", None)
+
+        if value_type is not None and value_index is not None:
+            formatted_value = _format_uss_value(
+                value_type,
+                value_index,
+                strings,
+                colors,
+                floats,
+                dimensions,
+                prop_name,
+            )
+
+            if formatted_value:
+                formatted_values.append(formatted_value)
+
+        i += 1
+
+    # Join all formatted values with spaces
+    return " ".join(formatted_values) if formatted_values else ""
 
 
 def clean_for_json(obj, seen=None, max_depth: int = 10):

@@ -12,7 +12,7 @@ import re
 
 from .base import BaseAssetExtractor
 from ..models import CSSVariable, CSSClass, CSSProperty, CSSValueDefinition
-from ...css_utils import build_selector_from_parts
+from ...css_utils import build_selector_from_parts, convert_uss_values_to_text
 from ..css_resolver import CSSResolver, resolve_css_class_properties
 
 
@@ -59,6 +59,8 @@ class CSSExtractor(BaseAssetExtractor):
                 stylesheet_name = self._get_asset_name(data) or "UnnamedStyleSheet"
                 strings = list(getattr(data, "strings", []))
                 colors = getattr(data, "colors", [])
+                floats = getattr(data, "floats", []) if hasattr(data, "floats") else []
+                dimensions = getattr(data, "dimensions", []) if hasattr(data, "dimensions") else []
                 rules = getattr(data, "m_Rules", [])
                 rule_selectors = self._get_rule_selectors(data)
 
@@ -73,7 +75,7 @@ class CSSExtractor(BaseAssetExtractor):
                             continue
 
                         # Parse values
-                        value_defs = self._extract_values(prop, strings, colors)
+                        value_defs = self._extract_values(prop, strings, colors, floats, dimensions)
 
                         # Check if this property defines a CSS variable
                         if prop_name and prop_name.startswith("--"):
@@ -99,6 +101,8 @@ class CSSExtractor(BaseAssetExtractor):
                                     properties=properties,
                                     strings=strings,
                                     colors=colors,
+                                    floats=floats,
+                                    dimensions=dimensions,
                                 )
                                 if css_class:
                                     classes.append(css_class)
@@ -150,20 +154,34 @@ class CSSExtractor(BaseAssetExtractor):
         return out
 
     def _extract_values(
-        self, prop: Any, strings: List[str], colors: List[Any]
+        self,
+        prop: Any,
+        strings: List[str],
+        colors: List[Any],
+        floats: List[float],
+        dimensions: List[Any],
     ) -> List[CSSValueDefinition]:
         """
-        Extract value definitions from a property.
+        Extract value definitions from a property (deprecated - kept for compatibility).
+
+        This method is deprecated in favor of using convert_uss_values_to_text directly.
+        It still provides individual value definitions for backward compatibility with
+        the CSSValueDefinition model.
 
         Args:
             prop: Property object
             strings: String array
             colors: Color array
+            floats: Floats array
+            dimensions: Dimensions array
 
         Returns:
             List of CSSValueDefinition objects
         """
+        from ...css_utils import format_uss_value
+
         value_defs = []
+        prop_name = getattr(prop, "m_Name", "")
 
         for val in getattr(prop, "m_Values", []):
             value_type = getattr(val, "m_ValueType", None)
@@ -172,28 +190,28 @@ class CSSExtractor(BaseAssetExtractor):
             if value_type is None or value_index is None:
                 continue
 
-            resolved_value = ""
+            # Use the USS formatting logic to get the actual CSS/USS value
+            resolved_value = format_uss_value(
+                value_type,
+                value_index,
+                strings,
+                colors,
+                floats,
+                dimensions,
+                prop_name,
+            )
+
+            # For backward compatibility, still extract raw color data
             raw_value = None
-
-            # Type 3: Dimension (e.g., "10px")
-            # Type 8: String
-            # Type 10: Variable reference (e.g., "var(--primary)")
-            if value_type in (3, 8, 10):
-                if isinstance(value_index, int) and 0 <= value_index < len(strings):
-                    resolved_value = str(strings[value_index])
-
-            # Type 4: Color
-            elif value_type == 4:
+            if value_type == 4:  # Color
                 if isinstance(value_index, int) and 0 <= value_index < len(colors):
                     color_obj = colors[value_index]
-                    r = getattr(color_obj, "r", 0.0)
-                    g = getattr(color_obj, "g", 0.0)
-                    b = getattr(color_obj, "b", 0.0)
-                    a = getattr(color_obj, "a", 1.0)
-
-                    # Convert to hex
-                    resolved_value = self._rgba_to_hex(r, g, b, a)
-                    raw_value = {"r": r, "g": g, "b": b, "a": a}
+                    raw_value = {
+                        "r": getattr(color_obj, "r", 0.0),
+                        "g": getattr(color_obj, "g", 0.0),
+                        "b": getattr(color_obj, "b", 0.0),
+                        "a": getattr(color_obj, "a", 1.0),
+                    }
 
             value_def = CSSValueDefinition(
                 value_type=value_type,
@@ -252,6 +270,8 @@ class CSSExtractor(BaseAssetExtractor):
         properties: List[Any],
         strings: List[str],
         colors: List[Any],
+        floats: List[float],
+        dimensions: List[Any],
     ) -> CSSClass | None:
         """Create a CSSClass model instance."""
         if not properties:
@@ -259,18 +279,49 @@ class CSSExtractor(BaseAssetExtractor):
 
         css_properties = []
         variables_used = set()
+        raw_properties = {}  # Store actual CSS/USS text values
 
         for prop in properties:
             prop_name = getattr(prop, "m_Name", None)
             if not prop_name:
                 continue
 
-            value_defs = self._extract_values(prop, strings, colors)
+            # Get individual value definitions (for backward compatibility)
+            value_defs = self._extract_values(prop, strings, colors, floats, dimensions)
 
-            # Track variable references
+            # Get the actual CSS/USS text value for this property
+            prop_values = getattr(prop, "m_Values", [])
+            css_text_value = convert_uss_values_to_text(
+                prop_values,
+                prop_name,
+                strings,
+                colors,
+                floats,
+                dimensions,
+            )
+
+            # Store the actual CSS/USS text value
+            if css_text_value:
+                raw_properties[prop_name] = css_text_value
+
+            # Track variable references from the CSS text
+            if "var(--" in css_text_value:
+                # Extract variable names from var() references
+                import re
+                var_matches = re.findall(r"var\((--[\w-]+)\)", css_text_value)
+                variables_used.update(var_matches)
+
+            # Also track from value definitions (backward compatibility)
             for val in value_defs:
                 if val.value_type == 10:  # Variable reference
-                    variables_used.add(val.resolved_value)
+                    if val.resolved_value.startswith("var("):
+                        # Extract variable name from var(--name)
+                        import re
+                        match = re.search(r"var\((--[\w-]+)\)", val.resolved_value)
+                        if match:
+                            variables_used.add(match.group(1))
+                    elif val.resolved_value.startswith("--"):
+                        variables_used.add(val.resolved_value)
 
             css_prop = CSSProperty(name=prop_name, values=value_defs)
             css_properties.append(css_prop)
@@ -283,6 +334,7 @@ class CSSExtractor(BaseAssetExtractor):
             stylesheet=stylesheet,
             bundle=bundle,
             properties=css_properties,
+            raw_properties=raw_properties,  # Store actual CSS/USS text
             variables_used=sorted(list(variables_used)),
             tags=tags,
             **self._create_default_status(),
