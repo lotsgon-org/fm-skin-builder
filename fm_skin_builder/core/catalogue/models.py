@@ -246,3 +246,64 @@ class Font(BaseModel):
     changed_in_version: Optional[str] = Field(
         None, description="Version where this change occurred"
     )
+
+
+class VisualTreeAsset(BaseModel):
+    """UXML/VisualTreeAsset (UI Toolkit interface definition)."""
+
+    name: str = Field(..., description="Asset name")
+    bundle: str = Field(..., description="Bundle filename")
+    content_hash: str = Field(..., description="SHA256 hash of UXML content")
+
+    # Element statistics
+    element_count: int = Field(default=0, description="Total number of visual elements")
+    element_types: List[str] = Field(
+        default_factory=list,
+        description="Unique element types used: ['VisualElement', 'Label', 'Button']"
+    )
+
+    # CSS classes used in this UXML
+    classes_used: List[str] = Field(
+        default_factory=list,
+        description="CSS classes referenced in this UXML"
+    )
+
+    # Templates referenced
+    templates_used: List[str] = Field(
+        default_factory=list,
+        description="Template assets referenced"
+    )
+
+    # Inline stylesheet reference
+    has_inline_styles: bool = Field(
+        default=False,
+        description="True if this VTA has an inline StyleSheet"
+    )
+
+    # Auto-tags
+    tags: List[str] = Field(
+        default_factory=list,
+        description="Auto-generated tags: ['menu', 'ui', 'screen']"
+    )
+
+    # Export path (for exported UXML files)
+    export_path: Optional[str] = Field(
+        None,
+        description="Relative path to exported UXML file: 'uxml/MainMenu.uxml'"
+    )
+
+    # Version tracking
+    status: AssetStatus = AssetStatus.ACTIVE
+    first_seen: str = Field(..., description="FM version first appeared")
+    last_seen: str = Field(..., description="FM version last seen")
+
+    # Change tracking (schema 2.1.0+)
+    change_status: Optional[str] = Field(
+        None, description="Change status: 'new', 'modified', 'unchanged'"
+    )
+    changed_in_version: Optional[str] = Field(
+        None, description="Version where this change occurred"
+    )
+    previous_content_hash: Optional[str] = Field(
+        None, description="Previous content hash for modified assets"
+    )
