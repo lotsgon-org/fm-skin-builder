@@ -151,9 +151,11 @@ def get_current_metadata(s3, bucket: str) -> Dict[str, Any]:
     """Get current releases.json from R2, or return default structure."""
     try:
         response = s3.get_object(Bucket=bucket, Key="releases.json")
-        return json.loads(response["Body"].read().decode("utf-8"))
-    except Exception:
-        # File doesn't exist yet, return default
+        data = json.loads(response["Body"].read().decode("utf-8"))
+        print("✅ Found existing releases.json")
+        return data
+    except s3.exceptions.NoSuchKey:
+        print("ℹ️  releases.json not found, creating new structure")
         return {
             "stable": None,
             "beta": None,
@@ -208,76 +210,94 @@ def update_metadata(
 
     # Upload full metadata for website (with stable/beta structure)
     print("\nUploading full metadata for website...")
-    s3.put_object(
-        Bucket=bucket,
-        Key="releases.json",
-        Body=json.dumps(metadata, indent=2),
-        ContentType="application/json",
-        CacheControl="max-age=300",  # Cache for 5 minutes
-    )
+    try:
+        s3.put_object(
+            Bucket=bucket,
+            Key="releases.json",
+            Body=json.dumps(releases, indent=2),
+            ContentType="application/json",
+            CacheControl="max-age=300",  # Cache for 5 minutes
+        )
+        print("✅ releases.json uploaded successfully")
+    except Exception as e:
+        print(f"❌ Failed to upload releases.json: {e}")
+        sys.exit(1)
 
     # Upload Tauri-compatible latest.json (stable only)
-    if metadata["stable"]:
+    stable_info = releases.get("stable")
+    if stable_info:
         stable_metadata = {
-            "version": metadata["stable"]["version"],
-            "pub_date": metadata["stable"]["date"],
-            "platforms": metadata["stable"]["platforms"],
-            "notes": metadata["stable"]["notes"],
+            "version": stable_info["version"],
+            "pub_date": stable_info["date"],
+            "platforms": stable_info["platforms"],
+            "notes": stable_info["notes"],
         }
-        s3.put_object(
-            Bucket=bucket,
-            Key="latest.json",
-            Body=json.dumps(stable_metadata, indent=2),
-            ContentType="application/json",
-            CacheControl="max-age=300",
-        )
-        print("✅ Stable metadata uploaded as latest.json")
+        try:
+            s3.put_object(
+                Bucket=bucket,
+                Key="latest.json",
+                Body=json.dumps(stable_metadata, indent=2),
+                ContentType="application/json",
+                CacheControl="max-age=300",
+            )
+            print("✅ Stable metadata uploaded as latest.json")
+        except Exception as e:
+            print(f"❌ Failed to upload latest.json: {e}")
+            sys.exit(1)
     else:
         # No stable release yet, use default structure
-        s3.put_object(
-            Bucket=bucket,
-            Key="latest.json",
-            Body=json.dumps(
-                {
-                    "version": "0.0.0",
-                    "pub_date": datetime.utcnow().isoformat() + "Z",
-                    "platforms": {},
-                    "notes": "No stable release available",
-                },
-                indent=2,
-            ),
-            ContentType="application/json",
-            CacheControl="max-age=300",
-        )
-        print("✅ Default metadata uploaded as latest.json")
+        try:
+            s3.put_object(
+                Bucket=bucket,
+                Key="latest.json",
+                Body=json.dumps(
+                    {
+                        "version": "0.0.0",
+                        "pub_date": datetime.utcnow().isoformat() + "Z",
+                        "platforms": {},
+                        "notes": "No stable release available",
+                    },
+                    indent=2,
+                ),
+                ContentType="application/json",
+                CacheControl="max-age=300",
+            )
+            print("✅ Default metadata uploaded as latest.json")
+        except Exception as e:
+            print(f"❌ Failed to upload latest.json: {e}")
+            sys.exit(1)
 
     # Upload beta-specific latest.json for beta users
-    if metadata["beta"]:
+    beta_info = releases.get("beta")
+    if beta_info:
         beta_metadata = {
-            "version": metadata["beta"]["version"],
-            "pub_date": metadata["beta"]["date"],
-            "platforms": metadata["beta"]["platforms"],
-            "notes": metadata["beta"]["notes"],
+            "version": beta_info["version"],
+            "pub_date": beta_info["date"],
+            "platforms": beta_info["platforms"],
+            "notes": beta_info["notes"],
         }
-        s3.put_object(
-            Bucket=bucket,
-            Key="latest-beta.json",
-            Body=json.dumps(beta_metadata, indent=2),
-            ContentType="application/json",
-            CacheControl="max-age=300",
-        )
-        print("✅ Beta metadata uploaded as latest-beta.json")
+        try:
+            s3.put_object(
+                Bucket=bucket,
+                Key="latest-beta.json",
+                Body=json.dumps(beta_metadata, indent=2),
+                ContentType="application/json",
+                CacheControl="max-age=300",
+            )
+            print("✅ Beta metadata uploaded as latest-beta.json")
+        except Exception as e:
+            print(f"❌ Failed to upload latest-beta.json: {e}")
+            sys.exit(1)
 
     print("✅ Metadata updated successfully")
     print("\nCurrent releases:")
-    if metadata["stable"]:
-        print(f"  Stable: {metadata['stable']['version']}")
+    if stable_info:
+        print(f"  Stable: {stable_info['version']}")
     else:
         print("  Stable: None")
 
-    beta_info = releases.get("beta")
     if beta_info:
-        print(f"  Beta: {beta_info.get('version', 'unknown')}")
+        print(f"  Beta: {beta_info['version']}")
     else:
         print("  Beta: None")
 
