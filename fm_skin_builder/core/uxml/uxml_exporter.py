@@ -29,6 +29,7 @@ class UXMLExporter:
     def __init__(self):
         """Initialize the UXML exporter."""
         self.style_parser = StyleParser()
+        self._ref_by_id: Dict[int, Any] = {}  # Cache for references lookup
 
     def export_visual_tree_asset(
         self,
@@ -47,6 +48,9 @@ class UXMLExporter:
         """
         asset_name = getattr(vta_data, "m_Name", "Unknown")
         log.info(f"Exporting VisualTreeAsset: {asset_name}")
+
+        # Build references lookup for binding extraction
+        self._build_references_lookup(vta_data)
 
         # Create UXML document
         doc = UXMLDocument(asset_name=asset_name)
@@ -269,6 +273,10 @@ class UXMLExporter:
                     value=str(prop_value)
                 ))
 
+        # Extract binding attributes
+        binding_attrs = self._extract_binding_attributes(ve_asset, vta_data)
+        attributes.extend(binding_attrs)
+
         return attributes
 
     def _extract_property_value(self, prop: Any) -> Optional[str]:
@@ -325,6 +333,176 @@ class UXMLExporter:
         text_value = getattr(ve_asset, "m_Text", None)
         if text_value and isinstance(text_value, str):
             return text_value
+
+        return None
+
+    def _build_references_lookup(self, vta_data: Any) -> None:
+        """
+        Build a lookup dictionary mapping element IDs to their binding data.
+
+        Args:
+            vta_data: Unity VisualTreeAsset object
+        """
+        self._ref_by_id = {}
+
+        # Get references from VTA
+        references = getattr(vta_data, "references", None)
+        if not references:
+            return
+
+        ref_ids = getattr(references, "RefIds", [])
+
+        # Build lookup by uxmlAssetId
+        for ref_obj in ref_ids:
+            ref_data = getattr(ref_obj, "data", None)
+            if ref_data:
+                uxml_id = getattr(ref_data, "uxmlAssetId", None)
+                if uxml_id is not None:
+                    self._ref_by_id[uxml_id] = ref_data
+
+    def _extract_binding_attributes(
+        self,
+        ve_asset: Any,
+        vta_data: Any
+    ) -> List[UXMLAttribute]:
+        """
+        Extract binding-related attributes from element's reference data.
+
+        Args:
+            ve_asset: Unity VisualElementAsset object
+            vta_data: Parent VisualTreeAsset
+
+        Returns:
+            List of UXMLAttribute objects for bindings
+        """
+        attributes = []
+
+        # Get element ID
+        elem_id = getattr(ve_asset, "m_Id", None)
+        if elem_id is None or elem_id not in self._ref_by_id:
+            return attributes
+
+        ref_data = self._ref_by_id[elem_id]
+
+        # Extract TextBinding (for SIText elements)
+        text_binding = getattr(ref_data, "TextBinding", None)
+        if text_binding:
+            path = self._extract_binding_path(text_binding)
+            if path:
+                attributes.append(UXMLAttribute(
+                    name="text-binding",
+                    value=path
+                ))
+
+        # Extract Binding (for BindableSwitchElement, SIImage, etc.)
+        binding = getattr(ref_data, "Binding", None)
+        if binding:
+            path = self._extract_binding_path(binding)
+            if path:
+                attributes.append(UXMLAttribute(
+                    name="data-binding",
+                    value=path
+                ))
+
+        # Extract selection bindings (for TabbedGridLayoutElement)
+        current_sel_binding = getattr(ref_data, "CurrentSelectedIdBinding", None)
+        if current_sel_binding:
+            path = self._extract_simple_binding_path(current_sel_binding)
+            if path:
+                attributes.append(UXMLAttribute(
+                    name="current-selected-id-binding",
+                    value=path
+                ))
+
+        selection_binding = getattr(ref_data, "SelectionBinding", None)
+        if selection_binding:
+            path = self._extract_simple_binding_path(selection_binding)
+            if path:
+                attributes.append(UXMLAttribute(
+                    name="selection-binding",
+                    value=path
+                ))
+
+        selected_tab_binding = getattr(ref_data, "SelectedTabBinding", None)
+        if selected_tab_binding:
+            path = self._extract_simple_binding_path(selected_tab_binding)
+            if path:
+                attributes.append(UXMLAttribute(
+                    name="selected-tab-binding",
+                    value=path
+                ))
+
+        # Extract mappings (for BindingRemapper)
+        mappings = getattr(ref_data, "Mappings", [])
+        if mappings and len(mappings) > 0:
+            # Serialize mappings as JSON-like format
+            mapping_strs = []
+            for mapping in mappings:
+                from_var = getattr(mapping, 'from_', None)
+                to_obj = getattr(mapping, 'to', None)
+                to_path = None
+                if to_obj:
+                    to_path = getattr(to_obj, 'm_path', None)
+                if from_var and to_path:
+                    mapping_strs.append(f"{from_var}={to_path}")
+
+            if mapping_strs:
+                attributes.append(UXMLAttribute(
+                    name="binding-mappings",
+                    value=";".join(mapping_strs)
+                ))
+
+        return attributes
+
+    def _extract_binding_path(self, binding_obj: Any) -> Optional[str]:
+        """
+        Extract binding path from a BindingMethod object.
+
+        Args:
+            binding_obj: Unity BindingMethod object
+
+        Returns:
+            Binding path string or None
+        """
+        if binding_obj is None:
+            return None
+
+        # Get m_kind (1=direct, 2=visual function)
+        kind = getattr(binding_obj, 'm_kind', None)
+
+        if kind == 1:  # Direct binding
+            direct = getattr(binding_obj, 'm_direct', None)
+            if direct:
+                path = getattr(direct, 'm_path', None)
+                if path and path.strip():
+                    return path
+        elif kind == 2:  # Visual function binding
+            # For visual functions, we can't extract a simple path
+            # Return a marker to indicate this is a visual function
+            visual_func = getattr(binding_obj, 'm_visualFunction', None)
+            if visual_func:
+                is_assigned = getattr(visual_func, 'm_isAssigned', 0)
+                if is_assigned:
+                    return "[VisualFunction]"
+
+        return None
+
+    def _extract_simple_binding_path(self, binding_obj: Any) -> Optional[str]:
+        """
+        Extract path from a simple BindingPath object.
+
+        Args:
+            binding_obj: Unity BindingPath object
+
+        Returns:
+            Binding path string or None
+        """
+        if binding_obj is None:
+            return None
+
+        path = getattr(binding_obj, 'm_path', None)
+        if path and path.strip():
+            return path
 
         return None
 
