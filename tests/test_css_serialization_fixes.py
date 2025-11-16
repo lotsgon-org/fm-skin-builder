@@ -77,16 +77,28 @@ class TestValueTypeInterpretation:
         result = _format_uss_value(8, 1, strings, [], [], [], "some-property")
         assert result == "--my-var"  # Should normalize to --
 
-    def test_type_10_variable_wrapped_in_var(self):
-        """Test Type 10 (variable name) IS wrapped in var()."""
+    def test_type_10_variable_not_wrapped(self):
+        """Test Type 10 (variable name) returns variable name without var() wrapper.
+
+        Note: Type 10 can be either a variable reference or a keyword. The var()
+        wrapping happens at a higher level during triplet pattern detection
+        (Type10 + Type2 + Type8). Wrapping here would break that detection.
+        """
         from fm_skin_builder.core.css_utils import _format_uss_value
 
-        strings = ["--primary-color", "-my-var"]
-        result = _format_uss_value(10, 0, strings, [], [], [], "color")
-        assert result == "var(--primary-color)"
+        strings = ["--primary-color", "-my-var", "auto"]
 
+        # Variable names are returned with -- prefix but NOT wrapped in var()
+        result = _format_uss_value(10, 0, strings, [], [], [], "color")
+        assert result == "--primary-color"
+
+        # Variable names are normalized (- becomes --)
         result = _format_uss_value(10, 1, strings, [], [], [], "color")
-        assert result == "var(--my-var)"  # Should normalize variable name
+        assert result == "--my-var"
+
+        # Keywords are returned as-is
+        result = _format_uss_value(10, 2, strings, [], [], [], "display")
+        assert result == "auto"
 
     def test_type_11_function_call(self):
         """Test Type 11 (function call) is returned as-is."""
@@ -379,18 +391,23 @@ class TestKeywordPropertyHandling:
                 "--some-var", prop, 8, set()
             ), f"{prop} should reject Type 8 variables"
 
-    def test_type_10_still_wraps_in_var(self):
-        """Test Type 10 (Variable Reference) still wraps in var()."""
+    def test_type_10_returns_variable_name(self):
+        """Test Type 10 (Variable Reference) returns variable name without wrapper.
+
+        The var() wrapping happens at a higher level during triplet pattern
+        detection. This test verifies that individual Type 10 values are
+        returned correctly without premature wrapping.
+        """
         from fm_skin_builder.core.css_utils import _format_uss_value
 
         strings = ["--primary-color", "--midnight-alpha-80"]
 
-        # Type 10 should ALWAYS wrap in var()
+        # Type 10 returns variable name without var() wrapper
         result = _format_uss_value(10, 0, strings, [], [], [], "color")
-        assert result == "var(--primary-color)"
+        assert result == "--primary-color"
 
         result = _format_uss_value(10, 1, strings, [], [], [], "background-color")
-        assert result == "var(--midnight-alpha-80)"
+        assert result == "--midnight-alpha-80"
 
 
 if __name__ == "__main__":

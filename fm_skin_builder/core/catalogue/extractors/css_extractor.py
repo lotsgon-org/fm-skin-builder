@@ -12,7 +12,7 @@ import re
 
 from .base import BaseAssetExtractor
 from ..models import CSSVariable, CSSClass, CSSProperty, CSSValueDefinition
-from ...css_utils import build_selector_from_parts, format_property_value
+from ...css_utils import build_selector_from_parts, format_property_value, _format_uss_value
 from ..css_resolver import CSSResolver, resolve_css_class_properties
 
 
@@ -164,8 +164,8 @@ class CSSExtractor(BaseAssetExtractor):
         """
         Extract value definitions from a property.
 
-        NOTE: This provides raw individual value objects for backward compatibility.
-        For actual CSS/USS text values, use format_property_value() instead.
+        Uses the same USS formatting logic as the patch workflow to ensure
+        consistent value representation across the codebase.
 
         Args:
             prop: Property object
@@ -175,7 +175,7 @@ class CSSExtractor(BaseAssetExtractor):
             dimensions: Dimensions array
 
         Returns:
-            List of CSSValueDefinition objects (raw Unity data, not final USS text)
+            List of CSSValueDefinition objects with properly formatted USS values
         """
         value_defs = []
         prop_name = getattr(prop, "m_Name", "")
@@ -187,30 +187,28 @@ class CSSExtractor(BaseAssetExtractor):
             if value_type is None or value_index is None:
                 continue
 
-            # Store basic info about the value
-            # Don't try to format it here - format_property_value() handles that correctly
-            resolved_value = ""
+            # Use the SAME USS formatting logic as the patch workflow
+            # This ensures consistent value representation across the codebase
+            resolved_value = _format_uss_value(
+                value_type=value_type,
+                value_index=value_index,
+                strings=strings,
+                colors=colors,
+                floats=floats,
+                dimensions=dimensions,
+                prop_name=prop_name,
+            )
+
+            # Store raw color data for color values (for backward compatibility)
             raw_value = None
-
-            # Type 3: Dimension
-            # Type 8: String
-            # Type 10: Variable/keyword
-            if value_type in (3, 8, 10):
-                if isinstance(value_index, int) and 0 <= value_index < len(strings):
-                    resolved_value = str(strings[value_index])
-
-            # Type 4: Color
-            elif value_type == 4:
-                if isinstance(value_index, int) and 0 <= value_index < len(colors):
-                    color_obj = colors[value_index]
-                    r = getattr(color_obj, "r", 0.0)
-                    g = getattr(color_obj, "g", 0.0)
-                    b = getattr(color_obj, "b", 0.0)
-                    a = getattr(color_obj, "a", 1.0)
-
-                    # Convert to hex
-                    resolved_value = self._rgba_to_hex(r, g, b, a)
-                    raw_value = {"r": r, "g": g, "b": b, "a": a}
+            if value_type == 4 and isinstance(value_index, int) and 0 <= value_index < len(colors):
+                color_obj = colors[value_index]
+                raw_value = {
+                    "r": getattr(color_obj, "r", 0.0),
+                    "g": getattr(color_obj, "g", 0.0),
+                    "b": getattr(color_obj, "b", 0.0),
+                    "a": getattr(color_obj, "a", 1.0),
+                }
 
             value_def = CSSValueDefinition(
                 value_type=value_type,
