@@ -51,9 +51,6 @@ class UXMLImporter:
         # Extract templates
         doc.templates = self._extract_templates_from_xml(root_xml)
 
-        # Extract stylesheets
-        doc.stylesheets = self._extract_stylesheets_from_xml(root_xml)
-
         # Extract visual tree
         doc.root = self._extract_visual_tree_from_xml(root_xml)
 
@@ -83,9 +80,6 @@ class UXMLImporter:
 
         # Extract templates
         doc.templates = self._extract_templates_from_xml(root_xml)
-
-        # Extract stylesheets
-        doc.stylesheets = self._extract_stylesheets_from_xml(root_xml)
 
         # Extract visual tree
         doc.root = self._extract_visual_tree_from_xml(root_xml)
@@ -249,28 +243,6 @@ class UXMLImporter:
                 templates.append(UXMLTemplate(name=name, src=src))
 
         return templates
-
-    def _extract_stylesheets_from_xml(self, root_xml: ET.Element) -> List[str]:
-        """
-        Extract stylesheet references from XML.
-
-        Args:
-            root_xml: Root XML element
-
-        Returns:
-            List of stylesheet GUIDs/paths
-        """
-        stylesheets = []
-
-        for style_elem in root_xml.findall('.//Style'):
-            src = style_elem.get('src', '')
-            if src:
-                # Remove '#' prefix if present (Unity convention)
-                if src.startswith('#'):
-                    src = src[1:]
-                stylesheets.append(src)
-
-        return stylesheets
 
     def _extract_visual_tree_from_xml(self, root_xml: ET.Element) -> Optional[UXMLElement]:
         """

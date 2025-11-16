@@ -11,93 +11,131 @@ The UXML pipeline allows you to:
 - ✅ Edit UXML in any text editor
 - ✅ Import modified UXML back to VTA format
 - ✅ Maintain perfect order and structure
-- ✅ Manipulate styles, classes, and elements
+- ✅ Manipulate classes and inline styles
 
 ---
 
 ## Table of Contents
 
-1. [Stylesheet References (External CSS)](#stylesheet-references)
+1. [CSS Classes](#css-classes)
 2. [Inline Styles](#inline-styles)
-3. [Class Manipulation](#class-manipulation)
-4. [Element Manipulation](#element-manipulation)
-5. [Complete Examples](#complete-examples)
+3. [Element Manipulation](#element-manipulation)
+4. [Complete Examples](#complete-examples)
 
 ---
 
-## Stylesheet References
+## CSS Classes
 
-Unity UI Toolkit uses USS (Unity Style Sheets) files for styling, similar to CSS.
+Unity UI Toolkit uses USS (Unity Style Sheets) files for styling, similar to CSS. Elements reference styles using class names.
 
 ### How It Works
 
-When you export a VTA, stylesheet references appear as `<Style>` elements:
+Elements can have multiple CSS classes:
 
 ```xml
 <ui:UXML xmlns:ui="UnityEngine.UIElements">
-  <Style src="#9865314e7997c984d9af1b32b9bdf2ee"/>
-  <Style src="#a1b2c3d4e5f6789012345678901234ab"/>
-
-  <ui:VisualElement class="my-styled-element">
-    <!-- Elements use classes defined in the USS files -->
+  <ui:VisualElement name="container" class="main-container dark-theme">
+    <ui:Label text="Title" class="title-text large bold"/>
+    <ui:Button text="Submit" class="primary-button"/>
   </ui:VisualElement>
 </ui:UXML>
 ```
 
-### Stylesheet Format
+### USS Files
 
-- **GUID Format**: `#` + 32-character hex GUID
-- **Unity Convention**: GUIDs reference USS files in the Unity project
-- **Multiple Stylesheets**: You can have multiple `<Style>` elements
+USS files define the actual styles (managed separately from UXML):
 
-### What You Can Do
+```css
+/* BaseStyles.uss */
+.title-text {
+    font-size: 18px;
+    color: #FFFFFF;
+}
 
-**View which stylesheets are linked:**
+.large {
+    font-size: 24px;
+}
+
+.primary-button {
+    background-color: #007ACC;
+    color: #FFFFFF;
+    padding: 10px;
+}
+```
+
+**Note:** USS files are extracted/patched separately. The UXML only shows which classes are applied.
+
+### Adding Classes
+
+**In UXML (text editing):**
+```xml
+<!-- Add space-separated class names -->
+<ui:Button text="Click Me" class="primary-button large animated"/>
+```
+
+**In Python:**
 ```python
-from fm_skin_builder.core.uxml.uxml_exporter import UXMLExporter
+# Find element
+button = doc.find_element_by_name("my-button")
 
-exporter = UXMLExporter()
-doc = exporter.export_visual_tree_asset(vta_data)
-print(f"Stylesheets: {doc.stylesheets}")
+# Modify class attribute
+for attr in button.attributes:
+    if attr.name == 'class':
+        classes = attr.value.split()
+        classes.append("new-class")
+        attr.value = " ".join(classes)
+        break
 ```
 
-**Add a new stylesheet reference:**
+### Removing Classes
+
+**In UXML:**
 ```xml
-<!-- Add this at the top after other Style elements -->
-<Style src="#your-new-stylesheet-guid"/>
+<!-- Before -->
+<ui:Button class="primary-button large active"/>
+
+<!-- After (removed 'active') -->
+<ui:Button class="primary-button large"/>
 ```
 
-**Remove a stylesheet:**
+**In Python:**
+```python
+for attr in element.attributes:
+    if attr.name == 'class':
+        classes = attr.value.split()
+        classes.remove("active")
+        attr.value = " ".join(classes)
+        break
+```
+
+### Modifying Classes
+
+**Replace all classes:**
 ```xml
-<!-- Just delete the <Style> element -->
+<!-- Before -->
+<ui:Label class="old-style deprecated"/>
+
+<!-- After -->
+<ui:Label class="new-style modern"/>
 ```
-
-**Reorder stylesheets:**
-```xml
-<!-- Stylesheets are applied in order, so reordering affects priority -->
-<Style src="#base-styles"/>
-<Style src="#theme-overrides"/>  <!-- Applied last, takes priority -->
-```
-
-### Limitations
-
-- **GUIDs Only**: The pipeline preserves GUIDs but doesn't resolve them to filenames
-- **No USS Content**: USS file contents are not exported (use Unity's USS editor)
-- **Reference Only**: Stylesheet references work for reimport but don't modify USS files
 
 ---
 
 ## Inline Styles
 
-Inline styles are CSS-like style declarations directly on elements.
+Inline styles are CSS-like style declarations directly on elements. They override styles from USS classes.
 
 ### How It Works
 
 Inline styles use the `style` attribute:
 
 ```xml
-<ui:Label text="Hello" style="color: #FF0000; font-size: 24px;"/>
+<ui:Label text="Hello"
+          class="title-text"
+          style="color: #FF0000; font-size: 24px;"/>
 ```
+
+**Priority:** Inline styles override USS class styles (like HTML/CSS).
 
 ### Syntax
 
@@ -122,7 +160,9 @@ style="property1: value1; property2: value2;"
 
 **Simple styling:**
 ```xml
-<ui:Button text="Click Me" style="color: #FFFFFF; background-color: #007ACC;"/>
+<ui:Button text="Click Me"
+           class="primary-button"
+           style="background-color: #FF5722;"/>
 ```
 
 **Layout properties:**
@@ -133,18 +173,33 @@ style="property1: value1; property2: value2;"
 </ui:VisualElement>
 ```
 
-**Combining with classes:**
+**Overriding class styles:**
 ```xml
-<!-- Class from USS file provides base styling -->
-<!-- Inline style overrides specific properties -->
+<!-- USS defines .title-text with color: #FFFFFF -->
+<!-- Inline style overrides to make it red -->
 <ui:Label class="title-text" style="color: #FF0000;"/>
 ```
+
+### When to Use
+
+**Use Classes (in USS files):**
+- Reusable styles across many elements
+- Theme-level styling
+- Consistent design patterns
+
+**Use Inline Styles:**
+- One-off overrides
+- Dynamic/computed values
+- Quick prototyping
+- Element-specific adjustments
 
 ### Programmatic Manipulation
 
 **Python API:**
 ```python
 from fm_skin_builder.core.uxml.uxml_importer import UXMLImporter
+from fm_skin_builder.core.uxml.uxml_exporter import UXMLExporter
+from fm_skin_builder.core.uxml.uxml_ast import UXMLAttribute
 from pathlib import Path
 
 # Import UXML
@@ -159,114 +214,14 @@ for attr in label.attributes:
         break
 else:
     # Add style if it doesn't exist
-    from fm_skin_builder.core.uxml.uxml_ast import UXMLAttribute
     label.attributes.append(UXMLAttribute(
         name="style",
         value="color: #00FF00; font-size: 32px;"
     ))
 
 # Export back
-from fm_skin_builder.core.uxml.uxml_exporter import UXMLExporter
 exporter = UXMLExporter()
 exporter.write_uxml(doc, Path("layout_modified.uxml"))
-```
-
----
-
-## Class Manipulation
-
-Classes link elements to styles defined in USS files.
-
-### How It Works
-
-Elements can have multiple CSS classes:
-
-```xml
-<ui:Button class="primary-button large-text"/>
-<ui:Label class="title-text bold"/>
-```
-
-### Adding Classes
-
-**In UXML:**
-```xml
-<!-- Add space-separated class names -->
-<ui:VisualElement class="container flex-row">
-  <!-- Add another class -->
-  <ui:Label class="text-primary bold uppercase"/>
-</ui:VisualElement>
-```
-
-**In Python:**
-```python
-# Using helper methods
-element = doc.find_element_by_name("my-button")
-element.add_class("active")
-element.add_class("highlighted")
-
-# Or manually
-for attr in element.attributes:
-    if attr.name == 'class':
-        classes = attr.value.split()
-        classes.append("new-class")
-        attr.value = " ".join(classes)
-        break
-```
-
-### Removing Classes
-
-**In UXML:**
-```xml
-<!-- Before -->
-<ui:Button class="primary-button large-text active"/>
-
-<!-- After (removed 'active') -->
-<ui:Button class="primary-button large-text"/>
-```
-
-**In Python:**
-```python
-# Using helper method
-element.remove_class("active")
-
-# Or manually
-for attr in element.attributes:
-    if attr.name == 'class':
-        classes = attr.value.split()
-        classes.remove("active")
-        attr.value = " ".join(classes)
-        break
-```
-
-### Modifying Classes
-
-**Replace all classes:**
-```xml
-<!-- Before -->
-<ui:Label class="old-style deprecated"/>
-
-<!-- After -->
-<ui:Label class="new-style modern"/>
-```
-
-**Python:**
-```python
-for attr in element.attributes:
-    if attr.name == 'class':
-        attr.value = "new-class1 new-class2"
-        break
-```
-
-### Querying Classes
-
-**Python:**
-```python
-# Get all classes on an element
-classes = element.get_classes()
-print(classes)  # ['primary-button', 'large-text']
-
-# Find all elements with a specific class
-buttons = doc.find_elements_by_class("primary-button")
 ```
 
 ---
@@ -341,16 +296,7 @@ container.children = [
 
 ### Modifying Elements
 
-**Change element type** (requires recreating):
-```xml
-<!-- Before -->
-<ui:Label name="my-text" text="Hello"/>
-
-<!-- After (changed to Button) -->
-<ui:Button name="my-text" text="Hello"/>
-```
-
-**Modify attributes:**
+**Change attributes:**
 ```xml
 <!-- Before -->
 <ui:Button name="btn1" text="Old Text" class="primary"/>
@@ -361,19 +307,20 @@ container.children = [
 
 **Python:**
 ```python
-# Modify text
 button = doc.find_element_by_name("btn1")
-button.set_attribute("text", "New Text")
 
-# Add new attribute
-button.set_attribute("tooltip", "Click to submit")
-
-# Modify multiple attributes
+# Modify existing attribute
 for attr in button.attributes:
     if attr.name == "text":
-        attr.value = "Updated Text"
+        attr.value = "New Text"
     elif attr.name == "class":
         attr.value += " disabled"
+
+# Add new attribute
+button.attributes.append(UXMLAttribute(
+    name="tooltip",
+    value="Click to submit"
+))
 ```
 
 ### Moving Elements
@@ -438,28 +385,27 @@ container.children.insert(0, element)
 
 ## Complete Examples
 
-### Example 1: Stylesheet and Class Management
+### Example 1: Class Override with Inline Style
 
 ```python
 from fm_skin_builder.core.uxml.uxml_importer import UXMLImporter
 from fm_skin_builder.core.uxml.uxml_exporter import UXMLExporter
 from pathlib import Path
 
-# Import
+# Import UXML
 importer = UXMLImporter()
 doc = importer.import_uxml(Path("panel.uxml"))
 
-# View stylesheets
-print(f"Current stylesheets: {doc.stylesheets}")
-
-# Add a stylesheet (you need the GUID)
-doc.stylesheets.append("newstyle-guid-here")
-
-# Modify classes on all buttons
-for button in doc.find_elements_by_type("Button"):
-    button.remove_class("old-style")
-    button.add_class("new-style")
-    button.add_class("animated")
+# Find all buttons with "primary-button" class
+# Override one with red background
+for i, button in enumerate(doc.find_elements_by_class("primary-button")):
+    if i == 0:  # Only the first button
+        # Add inline style to override
+        from fm_skin_builder.core.uxml.uxml_ast import UXMLAttribute
+        button.attributes.append(UXMLAttribute(
+            name="style",
+            value="background-color: #FF0000;"
+        ))
 
 # Export
 exporter = UXMLExporter()
@@ -469,42 +415,17 @@ exporter.write_uxml(doc, Path("panel_updated.uxml"))
 **Result UXML:**
 ```xml
 <ui:UXML xmlns:ui="UnityEngine.UIElements">
-  <Style src="#original-stylesheet-guid"/>
-  <Style src="#newstyle-guid-here"/>
-
-  <ui:Button class="new-style animated"/>
-  <ui:Button class="new-style animated"/>
+  <!-- First button gets red background override -->
+  <ui:Button class="primary-button" style="background-color: #FF0000;"/>
+  <!-- Others keep USS class style -->
+  <ui:Button class="primary-button"/>
+  <ui:Button class="primary-button"/>
 </ui:UXML>
 ```
 
 ---
 
-### Example 2: Inline Style Theming
-
-```python
-# Import
-doc = importer.import_uxml(Path("dialog.uxml"))
-
-# Apply dark theme using inline styles
-for label in doc.find_elements_by_type("Label"):
-    label.set_attribute("style", "color: #FFFFFF; background-color: #2D2D30;")
-
-for button in doc.find_elements_by_type("Button"):
-    button.set_attribute("style", "color: #FFFFFF; background-color: #007ACC;")
-
-# Export
-exporter.write_uxml(doc, Path("dialog_dark.uxml"))
-```
-
-**Result UXML:**
-```xml
-<ui:Label text="Title" style="color: #FFFFFF; background-color: #2D2D30;"/>
-<ui:Button text="OK" style="color: #FFFFFF; background-color: #007ACC;"/>
-```
-
----
-
-### Example 3: Dynamic Form Builder
+### Example 2: Dynamic Form Builder
 
 ```python
 from fm_skin_builder.core.uxml.uxml_ast import UXMLElement, UXMLAttribute
@@ -567,7 +488,7 @@ exporter.write_uxml(doc, Path("form_generated.uxml"))
 
 **Result UXML:**
 ```xml
-<ui:VisualElement name="form-container">
+<ui:VisualElement name="form-container" class="form-container">
   <ui:VisualElement class="form-row">
     <ui:Label text="Name" class="form-label"/>
     <ui:TextField placeholder-text="Enter your name" class="form-input"/>
@@ -586,27 +507,59 @@ exporter.write_uxml(doc, Path("form_generated.uxml"))
 
 ---
 
-### Example 4: Bulk Updates
+### Example 3: Theme Switcher (Inline Style Override)
+
+```python
+# Import
+doc = importer.import_uxml(Path("dialog.uxml"))
+
+# Apply dark theme using inline style overrides
+dark_theme = {
+    "Label": "color: #FFFFFF; background-color: #2D2D30;",
+    "Button": "color: #FFFFFF; background-color: #007ACC;",
+    "TextField": "color: #FFFFFF; background-color: #3E3E42; border-color: #555555;",
+}
+
+for element_type, style_value in dark_theme.items():
+    elements = doc.find_elements_by_type(element_type)
+    for elem in elements:
+        # Add or update style attribute
+        found = False
+        for attr in elem.attributes:
+            if attr.name == "style":
+                attr.value = style_value
+                found = True
+                break
+        if not found:
+            from fm_skin_builder.core.uxml.uxml_ast import UXMLAttribute
+            elem.attributes.append(UXMLAttribute(
+                name="style",
+                value=style_value
+            ))
+
+# Export
+exporter.write_uxml(doc, Path("dialog_dark.uxml"))
+```
+
+---
+
+### Example 4: Bulk Class Updates
 
 ```python
 # Import
 doc = importer.import_uxml(Path("complex_panel.uxml"))
 
-# Find all elements with old naming convention
+# Update naming convention for all elements
 for element in doc.get_all_elements():
-    name = element.get_attribute("name")
-    if name and name.startswith("old_"):
-        # Update naming convention
-        new_name = name.replace("old_", "new_")
-        element.set_attribute("name", new_name)
-
-    # Add common class to all containers
-    if element.element_type == "VisualElement":
-        element.add_class("container-v2")
-
-    # Update deprecated elements
-    if element.get_attribute("deprecated") == "true":
-        element.add_class("hidden")
+    # Update class names (old -> new convention)
+    for attr in element.attributes:
+        if attr.name == "class":
+            # Replace old class prefix with new
+            attr.value = attr.value.replace("old-", "new-")
+            # Add version suffix
+            classes = attr.value.split()
+            classes.append("v2")
+            attr.value = " ".join(classes)
 
 # Export
 exporter.write_uxml(doc, Path("complex_panel_updated.uxml"))
@@ -616,10 +569,10 @@ exporter.write_uxml(doc, Path("complex_panel_updated.uxml"))
 
 ## Best Practices
 
-### 1. **Use Stylesheets for Reusable Styles**
+### 1. **Use USS for Reusable Styles**
 ```xml
 <!-- Good: Reusable, maintainable -->
-<Style src="#common-styles"/>
+<ui:Button class="primary-button"/>
 <ui:Button class="primary-button"/>
 
 <!-- Avoid: Duplicated inline styles -->
@@ -627,12 +580,12 @@ exporter.write_uxml(doc, Path("complex_panel_updated.uxml"))
 <ui:Button style="color: #FFF; background: #007ACC; padding: 10px;"/>
 ```
 
-### 2. **Use Inline Styles for One-Off Overrides**
+### 2. **Use Inline Styles for Overrides**
 ```xml
-<!-- Good: Base style from class, specific override inline -->
+<!-- Good: Base style from USS, specific override inline -->
 <ui:Label class="title-text" style="color: #FF0000;"/>
 
-<!-- Avoid: Everything inline -->
+<!-- Avoid: Everything inline when it could be in USS -->
 <ui:Label style="font-size: 24px; font-weight: bold; margin: 10px; color: #FF0000;"/>
 ```
 
@@ -674,41 +627,61 @@ exporter.write_uxml(doc, Path("complex_panel_updated.uxml"))
 
 ---
 
-## Limitations
+## Workflow Integration
 
-### Unity VTA Import
-When importing back to Unity's VisualTreeAsset format:
-- **Inline styles** are preserved in UXML but NOT in VTA (Unity uses StyleSheets)
-- **Stylesheet GUIDs** are preserved but not validated
-- **Custom attributes** may be lost (Unity supports specific attributes per element type)
+### With CSS Patcher
 
-### Round-Trip Compatibility
-- **UXML → UXML**: Perfect fidelity ✓
-- **VTA → UXML → VTA**: Structure and references preserved ✓
-- **Unity Editor**: May need to reassign USS files if GUIDs change
+The UXML pipeline works perfectly with your existing CSS patcher:
+
+1. **Export UXML** - See class names
+2. **Export USS** - See style definitions
+3. **Edit UXML** - Add/remove classes or inline overrides
+4. **Patch USS** - Modify style definitions (via CSS patcher)
+5. **Import Both** - Reimport UXML and USS
+
+**Example:**
+```xml
+<!-- UXML: Shows which classes are used -->
+<ui:Label class="item-name highlight"/>
+```
+
+```css
+/* USS: Defines what those classes do (patched separately) */
+.item-name {
+    font-size: 14px;
+    color: #FFFFFF;
+}
+
+.highlight {
+    background-color: #FFD700;
+    font-weight: bold;
+}
+```
 
 ---
 
 ## Summary
 
-| Feature | Status | Notes |
-|---------|--------|-------|
-| Stylesheet References | ✅ Full Support | Import/export GUID references |
-| Inline Styles | ✅ Full Support | Round-trip in UXML, not VTA |
-| Class Add/Remove | ✅ Full Support | Helper methods available |
-| Element Add/Remove | ✅ Full Support | Programmatic or text editing |
-| Element Reorder | ✅ Full Support | Order preserved perfectly |
-| Attribute Editing | ✅ Full Support | All attributes supported |
-| Template References | ✅ Full Support | See TEMPLATE_AND_ORDER_FIXES_COMPLETE.md |
-| Data Bindings | ✅ Full Support | See BINDING_EXTRACTION_COMPLETE.md |
+| Feature | Support | Notes |
+|---------|---------|-------|
+| CSS Classes | ✅ Full | Class names reference USS files |
+| Inline Styles | ✅ Full | Override USS classes |
+| Class Add/Remove | ✅ Full | Simple text editing |
+| Element Add/Remove | ✅ Full | Python or UXML editing |
+| Element Reorder | ✅ Full | Order preserved perfectly |
+| Attribute Editing | ✅ Full | All attributes supported |
+| Template References | ✅ Full | See TEMPLATE_AND_ORDER_FIXES_COMPLETE.md |
+| Data Bindings | ✅ Full | See BINDING_EXTRACTION_COMPLETE.md |
+| USS Content | ➡️ Separate Tool | Use USS exporter/patcher |
 
 ---
 
-## Next Steps
+## Key Takeaways
 
-1. **Experiment**: Try editing a simple UXML file
-2. **Test Round-Trip**: Export → Edit → Import → Verify
-3. **Build Tools**: Create scripts for common modifications
-4. **Document Styles**: Map USS GUIDs to filenames for your project
+1. **Classes** - Use for reusable styles defined in USS files
+2. **Inline Styles** - Use for element-specific overrides
+3. **Human Readable** - Clean UXML with no GUID clutter
+4. **USS Separate** - Style definitions managed via USS exporter/patcher
+5. **Full Control** - Add/remove/modify classes and elements easily
 
 Happy editing! 🎨
