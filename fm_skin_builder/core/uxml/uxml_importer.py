@@ -238,7 +238,9 @@ class UXMLImporter:
         Returns:
             Root UXMLElement or None
         """
-        # Find first UI element (skip Template elements)
+        # Find all top-level UI elements (skip Template elements)
+        top_level_elements = []
+
         for child in root_xml:
             tag = child.tag
 
@@ -246,12 +248,22 @@ class UXMLImporter:
             if '}' in tag:
                 tag = tag.split('}')[1]
 
-            # Skip Template elements
-            if tag == 'Template':
+            # Skip Template elements and comments
+            if tag == 'Template' or callable(tag):
                 continue
 
             # This is a UI element
-            return self._parse_xml_element(child)
+            top_level_elements.append(self._parse_xml_element(child))
+
+        # If there's only one top-level element, return it
+        if len(top_level_elements) == 1:
+            return top_level_elements[0]
+
+        # If there are multiple top-level elements, wrap them in a VisualElement
+        if len(top_level_elements) > 1:
+            wrapper = UXMLElement(element_type="VisualElement")
+            wrapper.children = top_level_elements
+            return wrapper
 
         return None
 
@@ -310,9 +322,11 @@ class UXMLImporter:
             CSS text or None
         """
         # Check for CSS in comments
-        for comment in root_xml.iter():
-            if isinstance(comment, ET.Comment):
-                comment_text = comment.text or ''
+        # Comments are detected by checking if the tag is a callable (function)
+        for elem in root_xml.iter():
+            if callable(elem.tag):
+                # This is a comment
+                comment_text = elem.text or ''
                 if 'Inline Styles:' in comment_text:
                     # Extract CSS from comment
                     lines = comment_text.split('\n')

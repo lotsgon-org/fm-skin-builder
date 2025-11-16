@@ -125,25 +125,25 @@ class UXMLExporter:
             if element.id is not None:
                 elements_by_id[element.id] = element
 
-        # Second pass: build hierarchy
+        # Second pass: build hierarchy using m_Id and m_ParentId
         for ve_asset in visual_elements:
-            elem_id = getattr(ve_asset, "id", None)
-            parent_id = getattr(ve_asset, "parentId", None)
+            elem_id = getattr(ve_asset, "m_Id", None)
+            parent_id = getattr(ve_asset, "m_ParentId", None)
 
-            if elem_id is not None and parent_id is not None and parent_id != -1:
-                # This element has a parent
+            if elem_id is not None and parent_id is not None and parent_id != 0:
+                # This element has a parent (parent_id != 0 means it has a parent)
                 if elem_id in elements_by_id and parent_id in elements_by_id:
                     parent = elements_by_id[parent_id]
                     child = elements_by_id[elem_id]
                     parent.children.append(child)
 
-        # Find root element (no parent or parent = -1)
+        # Find root element (parent_id == 0)
         root = None
         for ve_asset in visual_elements:
-            parent_id = getattr(ve_asset, "parentId", None)
-            elem_id = getattr(ve_asset, "id", None)
+            parent_id = getattr(ve_asset, "m_ParentId", None)
+            elem_id = getattr(ve_asset, "m_Id", None)
 
-            if parent_id is None or parent_id == -1:
+            if parent_id == 0:
                 if elem_id is not None and elem_id in elements_by_id:
                     root = elements_by_id[elem_id]
                     break
@@ -174,9 +174,9 @@ class UXMLExporter:
         # Create element
         element = UXMLElement(
             element_type=type_name,
-            id=getattr(ve_asset, "id", None),
-            parent_id=getattr(ve_asset, "parentId", None),
-            order_in_document=getattr(ve_asset, "orderInDocument", None)
+            id=getattr(ve_asset, "m_Id", None),
+            parent_id=getattr(ve_asset, "m_ParentId", None),
+            order_in_document=getattr(ve_asset, "m_OrderInDocument", None)
         )
 
         # Extract attributes from UxmlTraits
@@ -203,17 +203,24 @@ class UXMLExporter:
         Returns:
             Element type name (e.g., "VisualElement", "Label", "Button")
         """
-        # Unity stores the type name in various ways
-        # Try m_Name first (for custom elements)
-        type_name = getattr(ve_asset, "m_TypeName", None)
+        # Unity stores the full type name in m_FullTypeName
+        # e.g., "UnityEngine.UIElements.Label" -> "Label"
+        # or "SI.Bindable.SIText" -> "SIText"
+        full_type = getattr(ve_asset, "m_FullTypeName", None)
 
-        if not type_name:
-            # Fallback: check the type of the object itself
-            # This requires examining the Unity class structure
-            # For now, default to VisualElement
-            type_name = "VisualElement"
+        if full_type:
+            # Extract the last part after the final dot
+            parts = full_type.split('.')
+            type_name = parts[-1]
 
-        return type_name
+            # Handle special case: UXML root element
+            if type_name == "UXML":
+                type_name = "VisualElement"
+
+            return type_name
+
+        # Fallback
+        return "VisualElement"
 
     def _extract_attributes(
         self,
@@ -232,60 +239,72 @@ class UXMLExporter:
         """
         attributes = []
 
-        # Get string table from VisualTreeAsset
-        string_table = getattr(vta_data, "m_Strings", [])
+        # Extract name attribute
+        name_value = getattr(ve_asset, "m_Name", "")
+        if name_value:
+            attributes.append(UXMLAttribute(name="name", value=name_value))
 
-        # Extract common attributes
-
-        # 1. name attribute
-        name_index = getattr(ve_asset, "m_Name", None)
-        if name_index is not None and 0 <= name_index < len(string_table):
-            name_value = string_table[name_index]
-            if name_value:
-                attributes.append(UXMLAttribute(name="name", value=name_value))
-
-        # 2. class list
+        # Extract class list
         classes = getattr(ve_asset, "m_Classes", [])
         if classes:
-            class_names = []
-            for class_index in classes:
-                if 0 <= class_index < len(string_table):
-                    class_names.append(string_table[class_index])
+            # Classes are already strings in Unity 2021+
+            attributes.append(UXMLAttribute(
+                name="class",
+                value=" ".join(classes)
+            ))
 
-            if class_names:
+        # Extract properties (custom attributes)
+        properties = getattr(ve_asset, "m_Properties", [])
+        for prop in properties:
+            prop_name = getattr(prop, "m_Name", None)
+            if not prop_name:
+                continue
+
+            # Get property value
+            # Properties can have different value types
+            prop_value = self._extract_property_value(prop)
+            if prop_value is not None:
                 attributes.append(UXMLAttribute(
-                    name="class",
-                    value=" ".join(class_names)
+                    name=prop_name,
+                    value=str(prop_value)
                 ))
-
-        # 3. Extract other UxmlTraits
-        # Unity stores these in various fields depending on the element type
-        # For now, we'll extract the most common ones
-
-        # Style classes (in addition to m_Classes)
-        style_classes = getattr(ve_asset, "m_ClassList", [])
-        if style_classes and not classes:
-            # Convert indices to names
-            class_names = []
-            for class_index in style_classes:
-                if 0 <= class_index < len(string_table):
-                    class_names.append(string_table[class_index])
-
-            if class_names:
-                attributes.append(UXMLAttribute(
-                    name="class",
-                    value=" ".join(class_names)
-                ))
-
-        # Inline style (if present)
-        # Note: Most inline styles are in the StyleSheet, not here
-        inline_style = getattr(ve_asset, "m_Style", None)
-        if inline_style:
-            # This would need proper style parsing
-            # For now, skip - styles are typically in separate StyleSheet
-            pass
 
         return attributes
+
+    def _extract_property_value(self, prop: Any) -> Optional[str]:
+        """
+        Extract property value from a UxmlAttributeDescription.
+
+        Args:
+            prop: Property object
+
+        Returns:
+            Property value as string or None
+        """
+        # Try to get the value from various possible fields
+        # Unity properties can store values in different ways
+
+        # Check for string value
+        str_value = getattr(prop, "m_Value", None)
+        if str_value is not None:
+            return str(str_value)
+
+        # Check for bool value
+        bool_value = getattr(prop, "m_BoolValue", None)
+        if bool_value is not None:
+            return "true" if bool_value else "false"
+
+        # Check for int value
+        int_value = getattr(prop, "m_IntValue", None)
+        if int_value is not None:
+            return str(int_value)
+
+        # Check for float value
+        float_value = getattr(prop, "m_FloatValue", None)
+        if float_value is not None:
+            return str(float_value)
+
+        return None
 
     def _extract_text_content(
         self,
@@ -302,12 +321,10 @@ class UXMLExporter:
         Returns:
             Text content or None
         """
-        string_table = getattr(vta_data, "m_Strings", [])
-
-        # Check for text field
-        text_index = getattr(ve_asset, "m_Text", None)
-        if text_index is not None and 0 <= text_index < len(string_table):
-            return string_table[text_index]
+        # Check for text field (stored as string in Unity 2021+)
+        text_value = getattr(ve_asset, "m_Text", None)
+        if text_value and isinstance(text_value, str):
+            return text_value
 
         return None
 
@@ -365,10 +382,17 @@ class UXMLExporter:
         """
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
-        # Build XML tree
-        root_elem = ET.Element("ui:UXML")
-        root_elem.set("xmlns:ui", "UnityEngine.UIElements")
-        root_elem.set("xmlns:uie", "UnityEditor.UIElements")
+        # Build XML tree with proper Unity namespaces
+        # Register namespaces to avoid ns0: prefixes
+        ET.register_namespace("ui", "UnityEngine.UIElements")
+        ET.register_namespace("uie", "UnityEditor.UIElements")
+        ET.register_namespace("xsi", "http://www.w3.org/2001/XMLSchema-instance")
+
+        # Create root element
+        root_elem = ET.Element("{UnityEngine.UIElements}UXML")
+        root_elem.set("{http://www.w3.org/2001/XMLSchema-instance}schemaLocation",
+                      "../../UIElementsSchema/UIElements.xsd")
+        root_elem.set("editor-extension-mode", "False")
 
         # Add templates
         for template in doc.templates:
@@ -376,12 +400,21 @@ class UXMLExporter:
             template_elem.set("name", template.name)
             template_elem.set("src", template.src)
 
-        # Add visual tree
+        # Add visual tree (skip the root UXML element itself, add its children)
         if doc.root:
-            self._build_xml_element(doc.root, root_elem)
+            # If root is a VisualElement that was the UXML wrapper, add its children directly
+            # Otherwise, add the root element
+            if doc.root.element_type == "VisualElement" and not doc.root.attributes:
+                # This is the wrapper element, add its children
+                for child in doc.root.children:
+                    self._build_xml_element(child, root_elem)
+            else:
+                # Add the root element itself
+                self._build_xml_element(doc.root, root_elem)
 
-        # Add inline styles as comment (if present)
+        # Add inline styles as Style element (if present)
         if doc.inline_styles:
+            # Could add as comment or as separate file reference
             style_comment = ET.Comment(f"\n Inline Styles:\n{doc.inline_styles}\n")
             root_elem.append(style_comment)
 
@@ -391,8 +424,11 @@ class UXMLExporter:
             dom = minidom.parseString(xml_str)
             pretty_xml = dom.toprettyxml(indent="  ")
 
-            # Remove extra blank lines
-            lines = [line for line in pretty_xml.split('\n') if line.strip()]
+            # Remove extra blank lines and the XML declaration
+            lines = []
+            for line in pretty_xml.split('\n'):
+                if line.strip() and not line.strip().startswith('<?xml'):
+                    lines.append(line)
             pretty_xml = '\n'.join(lines)
 
         except Exception as e:
@@ -415,8 +451,9 @@ class UXMLExporter:
             element: UXMLElement to convert
             parent_xml: Parent XML element
         """
-        # Create XML element with namespace prefix
-        xml_elem = ET.SubElement(parent_xml, f"ui:{element.element_type}")
+        # All UI elements use the ui: namespace (UnityEngine.UIElements)
+        # This includes both standard Unity elements and custom SI elements
+        xml_elem = ET.SubElement(parent_xml, f"{{UnityEngine.UIElements}}{element.element_type}")
 
         # Add attributes
         for attr in element.attributes:
